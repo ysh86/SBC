@@ -181,15 +181,16 @@ const unsigned char rom[ROM_SIZE] __at(0xc000) = {
 };
 
 // I/O RAM
+#define RAM_TOP  0xe000
 #define RAM_SIZE 0x1000
 unsigned char ioram[RAM_SIZE];
 
 // UART
-#define UART_DREG 0x8019  // Data REG
-#define UART_CREG 0x8018  // Control REG
-//#define UART_BPS  0x1a0 //  9600bps @ 64MHz
-//#define UART_BPS  0xd0  // 19200bps @ 64MHz
-#define UART_BPS  0x68  // 38400bps @ 64MHz
+#define UART_SREG 0xe000 // Status REG
+#define UART_DREG 0xe001 // Data REG
+//#define UART_BPS  0x1a0  //  9600bps @ 64MHz
+//#define UART_BPS  0xd0   // 19200bps @ 64MHz
+#define UART_BPS  0x68   // 38400bps @ 64MHz
 
 // UART3 Transmit
 void putch(char c) {
@@ -241,8 +242,8 @@ void __interrupt(irq(CLC5),base(8)) CLC5_ISR(){
 
     // I/O read cycle
     TRISC = 0x00;               // Set data bus as output
-    if (ab.w == UART_CREG)      // UART CTL
-        LATC = PIR9;            // Out PIR9
+    if (ab.w == UART_SREG)      // UART Status
+        LATC = PIR9;            // Out PIR9: Bit 1 - U3TXIF(TX is empty), Bit 0 - U3RXIF(RX is full)
     else if (ab.w == UART_DREG) // UART RX
         LATC = U3RXB;           // Out U3RXB
     else                        // Read from I/O RAM
@@ -346,15 +347,20 @@ void main(void) {
     // UART3 Receiver
     ANSELA7 = 0;	// Disable analog function
     TRISA7 = 1;		// RX set as input
-    U3RXPPS = 0x07;	//RA7->UART3:RX3;
+    U3RXPPS = 0x07;	// RA7->UART3:RX3;
 
     // UART3 Transmitter
     ANSELA6 = 0;	// Disable analog function
     LATA6 = 1;		// Default level
     TRISA6 = 0;		// TX set as output
-    RA6PPS = 0x26;	//RA6->UART3:TX3;
+    RA6PPS = 0x26;	// RA6->UART3:TX3;
 
     U3ON = 1;		// Serial port enable
+
+    // Copy PIC Flash ROM -> I/O RAM
+    for (unsigned int i = 0; i < RAM_SIZE; i++) {
+        ioram[i] = rom[RAM_TOP - ROM_TOP + i];
+    }
 
     // Upload PIC Flash ROM -> CPU RAM
     for (int bank = 2; bank > 0; bank--) {
@@ -494,18 +500,11 @@ void main(void) {
     CLCnSEL2 = 6;    // CLCIN6PPS <- A13
     CLCnSEL3 = 7;    // CLCIN7PPS <- A12
 
-    // $8xxx
-    CLCnGLS0 = 0x02; // A15=1
-    CLCnGLS1 = 0x04; // A14=0
-    CLCnGLS2 = 0x10; // A13=0
-    CLCnGLS3 = 0x40; // A12=0
     // $exxx
-    /*
     CLCnGLS0 = 0x02; // A15=1
     CLCnGLS1 = 0x08; // A14=1
     CLCnGLS2 = 0x20; // A13=1
     CLCnGLS3 = 0x40; // A12=0
-    */
 
     CLCnPOL = 0x80;  // inverted the output of the logic cell.
     CLCnCON = 0x82;  // 4 input AND
