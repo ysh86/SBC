@@ -168,8 +168,6 @@ void __interrupt(irq(CLC3),base(8)) CLC_ISR(){
 
 // main routine
 void main(void) {
-    unsigned int i;
-
     // System initialize
     OSCFRQ = 0x08; // 64MHz internal OSC
 
@@ -248,7 +246,7 @@ void main(void) {
     ANSELA0 = 0; // Disable analog function
     LATA0 = 0;   // enable I/O RAM
     TRISA0 = 0;  // Set as output
-    for (i = 0x0020; i <= 0x7f20; i += 0x100) {
+    for (uint16_t i = 0x0020; i <= 0x7f20; i += 0x100) {
         ab.w = i;
         LATE2 = ((ab.h>>6) & 1);
         LATD = (ab.h & 0x3f);
@@ -260,7 +258,7 @@ void main(void) {
     LATA0 = 1;   // disable I/O RAM
 
     // Upload PIC Flash ROM -> CPU main RAM
-    for (i = 0; i < ROM_SIZE; i++) {
+    for (uint16_t i = 0; i < ROM_SIZE; i++) {
         ab.w = i;
         LATE2 = ((ab.h>>6) & 1);
         LATD = (ab.h & 0x3f);

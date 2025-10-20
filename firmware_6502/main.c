@@ -1,7 +1,7 @@
 /*
-    PIC18F47Q84 ROM image uploader, I/O RAM and UART emulation firmware
+    PIC18F47Q43/PIC18F47Q84 ROM image uploader and UART emulation firmware
 
-    Target: EMUZ80 with 6809+RAM
+    Target: EMUZ80 with W65C02S+RAM
     Compiler: Microchip MPLAB XC8 C Compiler V2.40 (Build date: Jul  3 2022)
 
     based on:
@@ -167,9 +167,9 @@
 
 #define _XTAL_FREQ 64000000UL // for __delay_us
 
-// CPU clock: Max 16MHz
-#define CPU_CLK_MHz 12UL
-#define CPU_CLK_STR "MEZ6809RAM 3.0MHz"
+// CPU clock: 4,6,8,10MHz
+#define CPU_CLK_MHz 8UL
+#define CPU_CLK_STR "MEZ6502RAM 8.0MHz"
 // INC = (cpu[MHz] * 2^20) * 2 / 64[MHz] = (cpu * 2^20) / 32 = cpu * 1,048,576/32 = cpu * 32768
 #define CPU_CLK_INC (CPU_CLK_MHz * 32768UL)
 
@@ -177,17 +177,13 @@
 #define ROM_TOP  0xc000
 #define ROM_SIZE 0x4000
 const unsigned char rom[ROM_SIZE] __at(0xc000) = {
-#include "../ROM/ROM16KB.h"
+#include "../ROM/ROM6502.h"
+//#include "../ROM/osi_bas_my_C000.h"
 };
 
-// I/O RAM
-#define RAM_TOP  0xe000
-#define RAM_SIZE 0x1000
-unsigned char ioram[RAM_SIZE];
-
 // UART
-#define UART_SREG 0xe000 // Status REG
-#define UART_DREG 0xe001 // Data REG
+#define UART_CREG 0xb018 // Control
+#define UART_DREG 0xb019 // Data
 //#define UART_BPS  0x1a0  //  9600bps @ 64MHz
 //#define UART_BPS  0xd0   // 19200bps @ 64MHz
 #define UART_BPS  0x68   // 38400bps @ 64MHz
@@ -217,54 +213,6 @@ union {
 // Never called, logically
 void __interrupt(irq(default),base(8)) Default_ISR(){}
 
-// Called at MRDY falling edge(Immediately after CLK rising)
-void __interrupt(irq(CLC5),base(8)) CLC5_ISR(){
-    CLC5IF = 0;   // Clear interrupt flag
-
-    ab.h = PORTD; // Read address high
-    ab.l = PORTB; // Read address low
-
-    // I/O write cycle
-    if (!RA4) {
-        if (ab.w == UART_DREG) {
-            // Write into U3TXB
-            U3TXB = PORTC;
-        } else {
-            // Write into I/O RAM
-            ioram[ab.w & 0x0fff] = PORTC;
-        }
-
-        // Release MRDY (D-FF reset)
-        G3POL = 1;
-        G3POL = 0;
-        return;
-    }
-
-    // I/O read cycle
-    TRISC = 0x00;               // Set data bus as output
-    if (ab.w == UART_SREG)      // UART Status
-        LATC = PIR9;            // Out PIR9: Bit 1 - U3TXIF(TX is empty), Bit 0 - U3RXIF(RX is full)
-    else if (ab.w == UART_DREG) // UART RX
-        LATC = U3RXB;           // Out U3RXB
-    else                        // Read from I/O RAM
-        LATC = ioram[ab.w & 0x0fff];
-
-    // Detect CLK rising edge
-    while(!RE1);
-    NOP(); // wait 62.5ns
-
-    // Release MRDY (D-FF reset)
-    G3POL = 1;
-    G3POL = 0;
-
-#if 1
-    NOP();      // wait 62.5ns
-#else
-    while(RA1); // Detect E falling edge <2.75MHz (11MHz)
-#endif
-    TRISC = 0xff; // Set data bus as input
-}
-
 // main routine
 void main(void) {
     // System initialize
@@ -275,57 +223,56 @@ void main(void) {
     LATE2 = 0;		// Reset
     TRISE2 = 0;		// Set as output
 
-    // /DMA,BREQ (RE0) output pin
+    // BE (RE0) output pin
     ANSELE0 = 0;	// Disable analog function
-    LATE0 = 1;		// BUS not request
+    LATE0 = 0;		// Bus Hi-Z
     TRISE0 = 0;		// Set as output
+
+    // N/C (RE1) output pin
+    ANSELE1 = 0;	// Disable analog function
+    LATE1 = 0;		// low
+    TRISE1 = 0;		// Set as output
 
     // Address bus A15-A8 pin
     ANSELD = 0x00;	// Disable analog function
-    WPUD = 0xff;    // Weak pull up
-    TRISD = 0xff;	// Set as input
+    LATD = 0x00;
+    TRISD = 0x00;	// Set as output
 
     // Address bus A7-A0 pin
     ANSELB = 0x00;	// Disable analog function
-    WPUB = 0xff;	// Weak pull up
-    TRISB = 0xff;	// Set as input
+    LATB = 0x00;
+    TRISB = 0x00;	// Set as output
 
     // Data bus D7-D0 pin
     ANSELC = 0x00;	// Disable analog function
     LATC = 0x00;
     TRISC = 0x00;	// Set as output
 
-    // CPU clock(RE1) by NCO FDC mode
-    RE1PPS = 0x41;	// RE1 assign NCO3
-    ANSELE1 = 0;	// Disable analog function
-    TRISE1 = 0;		// NCO output pin
-    NCO3INC = (2UL /*MHz*/ * 32768UL); // slow down for memcpy
-    NCO3CLK = 0x00;	// Clock source Fosc = 64MHz
-    NCO3PFM = 0; 	// Fixed Duty Cycle mode
-    NCO3OUT = 1; 	// NCO output enable
-    NCO3EN = 1;		// NCO enable
+    // CPU clock(RA3) by NCO FDC mode
+    RA3PPS = 0x3f;	// RA3 assign NCO1
+    ANSELA3 = 0;	// Disable analog function
+    TRISA3 = 0;		// NCO output pin
+    NCO1INC = CPU_CLK_INC;
+    NCO1CLK = 0x00; // Clock source Fosc = 64MHz
+    NCO1PFM = 0;	// Fixed Duty Cycle mode
+    NCO1OUT = 1;	// NCO output enable
+    NCO1EN = 1;		// NCO enable
 
-    // MRDY (RA0) output pin (Low = Halt)
+    // RDY (RA0) output pin (Low = Halt)
     ANSELA0 = 0;	// Disable analog function
     RA0PPS = 0x00;	// LATA0 -> RA0
-    LATA0 = 1;		// MRDY ready
+    LATA0 = 1;		// RDY ready
     TRISA0 = 0;		// Set as output
-
-    // E (RA1) input pin
-    ANSELA1 = 0;	// Disable analog function
-    WPUA1 = 1;		// Weak pull up
-    TRISA1 = 1;		// Set as input
 
     // R/W (RA4) input pin
     ANSELA4 = 0;	// Disable analog function
     WPUA4 = 1;		// Weak pull up
     TRISA4 = 1;		// Set as input
 
-    // Bank (RA3) output pin
-    ANSELA3 = 0;	// Disable analog function
-    RA3PPS = 0x00;	// LATA3 -> RA3
-    LATA3 = 0;		// Bank 0
-    TRISA3 = 0;		// Set as output
+    // Bank (RA1) output pin
+    ANSELA1 = 0;	// Disable analog function
+    LATA1 = 0;		// Bank 0
+    TRISA1 = 0;		// Set as output
 
     // /WE (RA2) output pin
     ANSELA2 = 0;	// Disable analog function
@@ -357,49 +304,14 @@ void main(void) {
 
     U3ON = 1;		// Serial port enable
 
-    // Copy PIC Flash ROM -> I/O RAM
-    for (unsigned int i = 0; i < RAM_SIZE; i++) {
-        ioram[i] = rom[RAM_TOP - ROM_TOP + i];
-    }
-
     // Upload PIC Flash ROM -> CPU RAM
-    for (int bank = 2; bank > 0; bank--) {
-        unsigned int i,j;
-        i = 0;
-        do {
-            // E
-            while(RA1);
-            while(!RA1);
-            LATE0 = 0; // /DMA,BREQ: Request BUS
-            while(RA1);
-            while(!RA1);
-            while(RA1);
-
-            // A15-A8,A7-A0: Set as output
-            TRISD = 0x00;
-            TRISB = 0x00;
-
-            LATA3 = (__bit)(bank-1);
-            for (j = 0; j < 32; j++) {
-                ab.w = ROM_TOP + i;
-                LATD = ab.h;
-                LATB = ab.l;
-                LATA2 = 0;     // /WE = 0
-                LATC = rom[i]; // from PIC Flash ROM
-                i++;
-                LATA2 = 1;     // /WE = 1
-            }
-
-            // A15-A8,A7-A0: Set as input
-            TRISD = 0xff;
-            TRISB = 0xff;
-
-            // E
-            while(RA1);
-            while(!RA1);
-            LATE0 = 1; // /DMA,BREQ: Release BUS
-            __delay_us(30);
-        } while (i < ROM_SIZE);
+    for (uint16_t i = 0; i < ROM_SIZE; i++) {
+        ab.w = ROM_TOP + i;
+        LATD = ab.h;
+        LATB = ab.l;
+        LATA2 = 0;     // /WE = 0
+        LATC = rom[i];
+        LATA2 = 1;     // /WE = 1
     }
 
     // Address bus A15-A8 pin
@@ -417,20 +329,12 @@ void main(void) {
     WPUC = 0xff;   // Weak pull up
     TRISC = 0xff;  // Set as input
 
-    // CPU clock
-    NCO3EN = 0;            // NCO disable
-    NCO3INC = CPU_CLK_INC; // full speed
-    NCO3EN = 1;            // NCO enable
-
     //==========    CPU info    ===========
     const char *cpu_info = "\r\n" CPU_CLK_STR "\r\n";
     while (*cpu_info != '\0') {
         putch(*cpu_info);
         ++cpu_info;
     }
-
-    //========== Clear all CLC outs ==========
-    CLCDATA = 0x07; // 0b0000_0111
 
     //========== CLC input pin assign ===========
     // CLCx Input 1,2,5,6: only PortA or C
@@ -440,46 +344,48 @@ void main(void) {
     // PortC: 0b00_010_xxx
     // PortD: 0b00_011_xxx
     // PortE: cannot be connected to CLC inputs/outputs
-    CLCIN0PPS = 0x01; // CLCIN0PPS <- RA1 <- E
-//  CLCIN1PPS = 0x1b; // CLCIN1PPS <- RD3 <- A11
+//  CLCIN0PPS
+//  CLCIN1PPS
 
     CLCIN2PPS = 0x1f; // CLCIN2PPS <- RD7 <- A15
     CLCIN3PPS = 0x1e; // CLCIN3PPS <- RD6 <- A14
 
     CLCIN4PPS = 0x04; // CLCIN4PPS <- RA4 <- R/W
-    CLCIN5PPS = 0x10; // CLCIN5PPS <- RC0 <- D0
+//  CLCIN5PPS
 
     CLCIN6PPS = 0x1d; // CLCIN6PPS <- RD5 <- A13
     CLCIN7PPS = 0x1c; // CLCIN7PPS <- RD4 <- A12
 
-    //========== CLC1 RAM,ROM /OE ==========
+    //========== CLC1 RAM /OE ==========
     CLCSELECT = 0;   // Select CLC1
+    CLCnCON = 0x00;  // Disable CLC
 
     CLCnSEL0 = 53;   // CLC3: /IORQ
     CLCnSEL1 = 4;    // CLCIN4PPS <- R/W
-    CLCnSEL2 = 0;    // CLCIN0PPS <- E
-    CLCnSEL3 = 55;   // CLC5: MRDY
+    CLCnSEL2 = 42;   // NCO1
+    CLCnSEL3 = 55;   // CLC5: RDY
 
     CLCnGLS0 = 0x02; // /IORQ
     CLCnGLS1 = 0x08; // R
-    CLCnGLS2 = 0x20; // E
-    CLCnGLS3 = 0x80; // MRDY
+    CLCnGLS2 = 0x20; // NCO1
+    CLCnGLS3 = 0x80; // RDY
 
     CLCnPOL = 0x80;  // inverted the output of the logic cell.
     CLCnCON = 0x82;  // 4 input AND
 
     //========== CLC2 RAM /WE ==========
     CLCSELECT = 1;   // Select CLC2
+    CLCnCON = 0x00;  // Disable CLC
 
-    CLCnSEL0 = 57;   // CLC7: RAM
+    CLCnSEL0 = 53;   // CLC3: /IORQ
     CLCnSEL1 = 4;    // CLCIN4PPS <- R/W
-    CLCnSEL2 = 0;    // CLCIN0PPS <- E
-    CLCnSEL3 = 55;   // CLC5: MRDY
+    CLCnSEL2 = 42;   // NCO1
+    CLCnSEL3 = 55;   // CLC5: RDY
 
-    CLCnGLS0 = 0x02; // RAM
+    CLCnGLS0 = 0x02; // /IORQ
     CLCnGLS1 = 0x04; // !/W
-    CLCnGLS2 = 0x20; // E
-    CLCnGLS3 = 0x80; // MRDY
+    CLCnGLS2 = 0x20; // NCO1
+    CLCnGLS3 = 0x80; // RDY
 
     CLCnPOL = 0x80;  // inverted the output of the logic cell.
     CLCnCON = 0x82;  // 4 input AND
@@ -487,106 +393,58 @@ void main(void) {
     // ----------------------------------------------------------------------
     // address decoder:
     //
-    // 0000-dfff: RAM
-    // e000-efff: I/O RAM & I/O regs
-    // f000-ffff: Read: ROM, Write: Bank switch(0 or 1)
+    // 0000-afff: RAM
+    // b000-bfff: I/O regs
+    // c000-ffff: RAM
     // ----------------------------------------------------------------------
 
     //========== CLC3 I/O /IORQ ==========
     CLCSELECT = 2;   // Select CLC3
+    CLCnCON = 0x00;  // Disable CLC
 
     CLCnSEL0 = 2;    // CLCIN2PPS <- A15
     CLCnSEL1 = 3;    // CLCIN3PPS <- A14
     CLCnSEL2 = 6;    // CLCIN6PPS <- A13
     CLCnSEL3 = 7;    // CLCIN7PPS <- A12
 
-    // $exxx
+    // $bxxx
     CLCnGLS0 = 0x02; // A15=1
-    CLCnGLS1 = 0x08; // A14=1
-    CLCnGLS2 = 0x20; // A13=1
-    CLCnGLS3 = 0x40; // A12=0
-
-    CLCnPOL = 0x80;  // inverted the output of the logic cell.
-    CLCnCON = 0x82;  // 4 input AND
-
-    //========== CLC4 /BANK switch ==========
-    CLCSELECT = 3;   // Select CLC4
-
-    CLCnSEL0 = 2;    // CLCIN2PPS <- A15
-    CLCnSEL1 = 3;    // CLCIN3PPS <- A14
-    CLCnSEL2 = 6;    // CLCIN6PPS <- A13
-    CLCnSEL3 = 7;    // CLCIN7PPS <- A12
-
-    // $fxxx
-    CLCnGLS0 = 0x02; // A15=1
-    CLCnGLS1 = 0x08; // A14=1
+    CLCnGLS1 = 0x04; // A14=0
     CLCnGLS2 = 0x20; // A13=1
     CLCnGLS3 = 0x80; // A12=1
 
     CLCnPOL = 0x80;  // inverted the output of the logic cell.
     CLCnCON = 0x82;  // 4 input AND
 
-    //========== CLC7 RAM ==========
-    CLCSELECT = 6;   // Select CLC7
-
-    CLCnSEL0 = 2;    // CLCIN2PPS <- A15
-    CLCnSEL1 = 3;    // CLCIN3PPS <- A14
-    CLCnSEL2 = 6;    // CLCIN6PPS <- A13
-    CLCnSEL3 = 127;  // N/C
-
-    // $0000-$dfff = !($exxx,$fxxx)
-    CLCnGLS0 = 0x02; // A15=1
-    CLCnGLS1 = 0x08; // A14=1
-    CLCnGLS2 = 0x20; // A13=1
-    CLCnGLS3 = 0x00; // not gated
-
-    CLCnPOL = 0x88;  // inverted the output of the logic cell. The gate4 outputs '1'.
-    CLCnCON = 0x82;  // 4 input AND
-
     // ----------------------------------------------------------------------
     // D-FF
     // ----------------------------------------------------------------------
 
-    //========== CLC6 RAM A16(Bank) ==========
-    CLCSELECT = 5;   // Select CLC6
+    //========== CLC5 I/O RDY ==========
+    CLCSELECT = 4;  // Select CLC5
+    CLCnCON = 0x00; // Disable CLC
 
-    CLCnSEL0 = 54;   // CLC4: /BANK
-    CLCnSEL1 = 4;    // CLCIN4PPS <- R/W
-    CLCnSEL2 = 0;    // CLCIN0PPS <- E
-    CLCnSEL3 = 5;    // CLCIN5PPS <- D0
+    CLCnSEL0 = 53;  // CLC3: /IORQ
+    CLCnSEL1 = 127; // N/C
+    CLCnSEL2 = 127; // N/C
+    CLCnSEL3 = 127; // N/C
 
-    CLCnGLS0 = 0x1a; // D-FF CLK <- inv(!/BANK & !/W & E) (falling edge) = (/BANK | /W | !E )
-    CLCnGLS1 = 0x80; // D-FF D   <- D0
-    CLCnGLS2 = 0x00; // D-FF R   <- not gated ('0')
-    CLCnGLS3 = 0x00; // D-FF S   <- not gated ('0')
-
-    CLCnPOL = 0x00;  // not inverted all
-    CLCnCON = 0x84;  // Select D-FF
-
-    //========== CLC5 I/O MRDY ==========
-    CLCSELECT = 4;   // Select CLC5
-
-    CLCnSEL0 = 0;    // CLCIN0PPS <- E
-    CLCnSEL1 = 53;   // CLC3: /IORQ
-    CLCnSEL2 = 127;  // N/C
-    CLCnSEL3 = 127;  // N/C
-
-    CLCnGLS0 = 0x01; // D-FF CLK <- inv!E = E (pos edge)
-    CLCnGLS1 = 0x04; // D-FF D   <- !/IORQ
+    CLCnGLS0 = 0x01; // D-FF CLK <- !/IORQ (neg edge)
+    CLCnGLS1 = 0x00; // D-FF D   <- not gated (inv'0')
     CLCnGLS2 = 0x00; // D-FF R   <- not gated ('0') <- G3POL
     CLCnGLS3 = 0x00; // D-FF S   <- not gated ('0')
 
-    CLCnPOL = 0x81;  // inverted the output of the logic cell. inverted D-FF CLK.
-    CLCnCON = 0x8c;  // Select D-FF, falling edge inturrupt
+    CLCnPOL = 0x82; // inverted the output of the logic cell. inverted D-FF D.
+    CLCnCON = 0x84; // Select D-FF
 
     //========== CLC output pin assign ===========
     // CLCxOUT: 0x01-0x08
     // CLCx Output 1,2,5,6: only PortA or C
     // CLCx Output 3,4,7,8: only PortB or D
-    RA5PPS = 0x01;    // CLC1OUT -> RA5 -> /OE
-    RA2PPS = 0x02;    // CLC2OUT -> RA2 -> /WE
-    RA0PPS = 0x05;    // CLC5OUT -> RA0 -> MRDY
-    RA3PPS = 0x06;    // CLC6OUT -> RA3 -> A16(Bank)
+    RA5PPS = 0x01; // CLC1OUT -> RA5 -> /OE
+    RA2PPS = 0x02; // CLC2OUT -> RA2 -> /WE
+    RA0PPS = 0x05; // CLC5OUT -> RA0 -> RDY
+                   // CLC6OUT -> RA1 -> A16(Bank)
 
     // Unlock IVT
     IVTLOCK = 0x55;
@@ -601,14 +459,44 @@ void main(void) {
     IVTLOCK = 0xAA;
     IVTLOCKbits.IVTLOCKED = 0x01;
 
-    // Enable CLC VI
-    CLC5IF = 0; // Clear the CLC5 interrupt flag
-    CLC5IE = 1; // Enabling CLC5 interrupt
-
     // Start CPU
     GIE = 1;   // Enable global interrupt
+    LATE0 = 1; // Enable bus
     LATE2 = 1; // Release reset
 
-    // All things come to those who wait
-    while(1);
+    // I/O loop
+    while (1) {
+        while (CLC5OUT) ;
+
+        ab.h = PORTD; // Read address high
+        ab.l = PORTB; // Read address low
+
+        if (!RA4) {
+            // write cycle
+            if (ab.w == UART_DREG) {
+                // Write into U3TXB
+                U3TXB = PORTC;
+            }
+
+            // Release RDY (D-FF reset)
+            G3POL = 1;
+            G3POL = 0;
+        } else {
+            // read cycle
+            TRISC = 0x00;               // Set Data Bus as output
+            if (ab.w == UART_CREG)      // UART Status
+                LATC = PIR9;            // Out PIR9: Bit 1 - U3TXIF(TX is empty), Bit 0 - U3RXIF(RX is full)
+            else if (ab.w == UART_DREG) // UART RX
+                LATC = U3RXB;           // Out U3RXB
+            else                        // Empty
+                LATC = 0xff;            // Invalid address
+
+            // Detect CLK falling edge
+            while(RA3);
+            // Release RDY (D-FF reset)
+            G3POL = 1;
+            TRISC = 0xff; // Set Data Bus as input
+            G3POL = 0;
+        }
+    }
 }
