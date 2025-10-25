@@ -164,6 +164,15 @@
 // Use project enums instead of #define for ON and OFF.
 
 #include <xc.h>
+#include <stdint.h>
+
+
+#define DEBUG_DUMP 0
+#if DEBUG_DUMP
+// for printf()
+#include <stdio.h>
+#endif
+
 
 // CPU clock: Max 10MHz
 #define CPU_CLK_MHz 10UL
@@ -208,6 +217,10 @@
 #define SPI_CK          B1
 #define SPI_SS          C7
 
+// command from CPU
+#define CMD_REQ         CLC3OUT
+void exec_command(void);
+
 // ROM equivalent: Max 32KB
 #define ROM_SIZE 0x2000UL
 const unsigned char rom[ROM_SIZE] __at(0xe000) = { // -1: compiler bug?
@@ -215,7 +228,11 @@ const unsigned char rom[ROM_SIZE] __at(0xe000) = { // -1: compiler bug?
 };
 
 // SRAM: MAX 512KB
+#if DEBUG_DUMP
 #define DO_RAM_TEST 1
+#else
+#define DO_RAM_TEST 0
+#endif
 #define RAM_SIZE    0x80000UL
 
 // UART
@@ -226,17 +243,20 @@ const unsigned char rom[ROM_SIZE] __at(0xe000) = { // -1: compiler bug?
 #define UART_BPS  0x68  // 38400bps @ 64MHz
 
 // UART3 Transmit
+#if !DEBUG_DUMP
+static inline
+#endif
 void putch(char c) {
     while(!U3TXIF); // Wait for Tx interrupt flag set
     U3TXB = c;      // Write data
 }
-/*
+
 // UART3 Receive
-char getch(void) {
+static inline char getch(void) {
     while(!U3RXIF); // Wait for Rx interrupt flag set
     return U3RXB;   // Read data
 }
-*/
+
 
 // Address Bus
 union {
@@ -547,26 +567,28 @@ void main(void) {
 
     //==========    Mem test    ===========
     unsigned long addr = 0;
+    unsigned long a = addr;
 #if DO_RAM_TEST
     LAT(M68K_LTOE) = 0;
-    while (addr < RAM_SIZE) {
+    while (a < addr+RAM_SIZE) {
         // RAM address
-        LAT(M68K_ADBUS) =  addr        & 0xff;
-        LAT(M68K_ADR_H) = (addr >>  8) & 0xff;
-        LAT(M68K_A16) =   (addr >> 16) & 1;
-        LAT(M68K_A17) =   (addr >> 17) & 1;
-        LAT(M68K_A18) =   (addr >> 18) & 1;
+        LAT(M68K_ADBUS) =  a        & 0xff;
+        LAT(M68K_ADR_H) = (a >>  8) & 0xff;
+        LAT(M68K_A16) =   (a >> 16) & 1;
+        LAT(M68K_A17) =   (a >> 17) & 1;
+        LAT(M68K_A18) =   (a >> 18) & 1;
         LAT(M68K_LE) = 1;
         LAT(M68K_LE) = 0;
 
         // wait
         NOP();
-        addr += 1;
+        a += 1;
 
         // write
+        unsigned char w = a & 0xff;
         LAT(M68K_RW) = 0; // /WE
         LAT(M68K_DS) = 0; // SRAM #CE
-        LAT(M68K_ADBUS) = addr & 0xff;
+        LAT(M68K_ADBUS) = w;
         NOP();
         LAT(M68K_DS) = 1; // SRAM #CE
         LAT(M68K_RW) = 1; // /WE
@@ -576,12 +598,13 @@ void main(void) {
         TRIS(M68K_ADBUS) = 0xff; // input
         LAT(M68K_DS) = 0; // SRAM #CE
         NOP();
+        NOP();
         r = PORT(M68K_ADBUS);
         LAT(M68K_DS) = 1; // SRAM #CE
         TRIS(M68K_ADBUS) = 0x00; // output
 
         // verify
-        if (r != (addr & 0xff)) {
+        if (r != w) {
             const char *msg = "RAM bad!\r\n";
             while (*msg != '\0') {
                 putch(*msg);
@@ -589,7 +612,7 @@ void main(void) {
             }
             goto END;
         }
-        if ((addr & 0x7fff) == 0x7fff) {
+        if ((a & 0x7fff) == 0x7fff) {
             // progress (every 32KB)
             putch('.');
             putch(' ');
@@ -613,12 +636,13 @@ END:
     LAT(M68K_A17) = 0;
     LAT(M68K_A18) = 0;
     addr = 0;
+    a = addr;
     LAT(M68K_LTOE) = 0;
     LAT(M68K_RW) = 0; // /WE
-    while (addr < ROM_SIZE) {
+    while (a < addr+ROM_SIZE) {
         // RAM address
-        LAT(M68K_ADBUS) =  addr        & 0xff;
-        LAT(M68K_ADR_H) = (addr >>  8) & 0xff;
+        LAT(M68K_ADBUS) =  a        & 0xff;
+        LAT(M68K_ADR_H) = (a >>  8) & 0xff;
         LAT(M68K_LE) = 1;
         LAT(M68K_LE) = 0;
 
@@ -628,9 +652,9 @@ END:
 
         // write
         LAT(M68K_DS) = 0; // SRAM #CE
-        LAT(M68K_ADBUS) = rom[addr];
+        LAT(M68K_ADBUS) = rom[a-addr];
         NOP();
-        addr += 1;
+        a += 1;
         LAT(M68K_DS) = 1; // SRAM #CE
     }
     LAT(M68K_RW) = 1; // /WE
@@ -642,12 +666,13 @@ END:
     LAT(M68K_A17) = (romaddr >> 17) & 1;
     LAT(M68K_A18) = (romaddr >> 18) & 1;
     addr = romaddr & 0xffff;
+    a = addr;
     LAT(M68K_LTOE) = 0;
     LAT(M68K_RW) = 0; // /WE
-    while (addr < ROM_SIZE) {
+    while (a < addr+ROM_SIZE) {
         // RAM address
-        LAT(M68K_ADBUS) =  addr        & 0xff;
-        LAT(M68K_ADR_H) = (addr >>  8) & 0xff;
+        LAT(M68K_ADBUS) =  a        & 0xff;
+        LAT(M68K_ADR_H) = (a >>  8) & 0xff;
         LAT(M68K_LE) = 1;
         LAT(M68K_LE) = 0;
 
@@ -657,9 +682,9 @@ END:
 
         // write
         LAT(M68K_DS) = 0; // SRAM #CE
-        LAT(M68K_ADBUS) = rom[addr];
+        LAT(M68K_ADBUS) = rom[a-addr];
         NOP();
-        addr += 1;
+        a += 1;
         LAT(M68K_DS) = 1; // SRAM #CE
     }
     LAT(M68K_RW) = 1; // /WE
@@ -673,6 +698,48 @@ END:
         }
     }
 
+#if DEBUG_DUMP
+    {
+        //addr = 0;
+        addr = 0x7e000;
+        a = addr;
+        LAT(M68K_ADR_H) = (a >>  8) & 0xff;
+        LAT(M68K_A16) =   (a >> 16) & 1;
+        LAT(M68K_A17) =   (a >> 17) & 1;
+        LAT(M68K_A18) =   (a >> 18) & 1;
+
+        LAT(M68K_LTOE) = 0;
+        while (a < addr+512) {
+            // RAM address
+            LAT(M68K_ADBUS) = a & 0xff;
+            LAT(M68K_LE) = 1;
+            LAT(M68K_LE) = 0;
+
+            // wait
+            NOP();
+            a += 1;
+
+            // read
+            TRIS(M68K_ADBUS) = 0xff; // input
+            LAT(M68K_DS) = 0; // SRAM #CE
+            NOP();
+            NOP();
+            uint8_t d = PORT(M68K_ADBUS);
+            LAT(M68K_DS) = 1; // SRAM #CE
+            TRIS(M68K_ADBUS) = 0x00; // output
+
+            // print
+            uint32_t b = a - 1;
+            if (b % 16 == 0) {
+                printf("\r\n%06lx:", b);
+            }
+            printf(" %02x", d);
+        }
+        LAT(M68K_LTOE) = 1;
+
+        printf("\r\n");
+    }
+#endif
 
     // Set as input
     TRIS(M68K_ADBUS) = 0xff; // D bus(data only): m68k <-> PIC
@@ -727,11 +794,133 @@ END:
         }
     }
 
-#if 0
+    // go!
     LAT(M68K_RESET) = 1;  // Release reset
     TRIS(M68K_RESET) = 1; // Set as input
-#endif
 
-    // All things come to those who wait
-    while(1);
+    // I/O loop
+    while (1) {
+        if (CMD_REQ) {
+            LAT(M68K_BR) = 0;           // m68k releases bus
+            while (R(M68K_BG)) {}       // wait
+
+            // PIC holds bus
+            TRIS(M68K_ADBUS) = 0x00;    // output
+            TRIS(M68K_ADR_H) = 0x00;    // output
+            TRIS(M68K_A16) = 0;         // output
+            TRIS(M68K_A17) = 0;         // output
+            TRIS(M68K_A18) = 0;         // output
+            TRIS(M68K_A19) = 0;         // output
+            TRIS(M68K_RW) = 0;          // output
+            TRIS(M68K_AS) = 0;          // output
+            TRIS(M68K_DS) = 0;          // output
+
+            LAT(M68K_RW) = 1;           // READ
+            LAT(M68K_DS) = 1;           // disable SRAM #CE
+            LAT(M68K_AS) = 1;           // disable #AS
+            LAT(M68K_LE) = 0;           // disable LE
+            LAT(M68K_A19) = 0;          // select SRAM
+
+            exec_command();
+
+            // PIC releases bus
+            TRIS(M68K_ADBUS) = 0xff;    // input
+            TRIS(M68K_ADR_H) = 0xff;    // input
+            TRIS(M68K_A16) = 1;         // input
+            TRIS(M68K_A17) = 1;         // input
+            TRIS(M68K_A18) = 1;         // input
+            TRIS(M68K_A19) = 1;         // input
+            TRIS(M68K_RW) = 1;          // input
+            TRIS(M68K_AS) = 1;          // input
+            TRIS(M68K_DS) = 1;          // input
+
+            // Reset CLC3 IOREQ
+            G3POL = 1;
+            G3POL = 0;
+
+            LAT(M68K_BR) = 1;           // m68k holds bus
+            while (!R(M68K_BG)) {}      // wait
+        }
+    }
+}
+
+
+// PIC command request table
+#define UREQ_COM    0x0 // monitor CONIN/CONOUT request command
+#define UNI_CHR     0x1 // one charcter (CONIN/CONOUT) or length of string
+#define STR_addr    0x2 // string address
+#define CREQ_COM    0x6 // PIC function CONIN/CONOUT request command
+#define CBI_CHR     0x7 // charcter or return status
+
+// xREQ_COM: request command from m68k
+#define REQ_CONIN   1   // return char in UNI_CHR
+#define REQ_CONOUT  2   // UNI_CHR = output char
+#define REQ_CONST   3   // return status in UNI_CHR ( 0: no key, 1 : key exist )
+#define REQ_STROUT  4   // string address
+//                  0   // request is done by PIC
+
+#define SMBASE 0x7FFF0UL
+static unsigned char table[16];
+
+void exec_command(void) {
+    // read from shm
+    unsigned long addr = SMBASE;
+    LAT(M68K_ADR_H) = (addr >>  8) & 0xff;
+    LAT(M68K_A16) =   (addr >> 16) & 1;
+    LAT(M68K_A17) =   (addr >> 17) & 1;
+    LAT(M68K_A18) =   (addr >> 18) & 1;
+
+    int i = 0;
+    LAT(M68K_LTOE) = 0;
+    while (addr < SMBASE+sizeof(table)) {
+        // RAM address
+        LAT(M68K_ADBUS) = addr & 0xff;
+        LAT(M68K_LE) = 1;
+        LAT(M68K_LE) = 0;
+
+        // read
+        TRIS(M68K_ADBUS) = 0xff; // input
+        LAT(M68K_DS) = 0;        // SRAM #CE
+        addr += 1;
+        NOP();
+        table[i++] = PORT(M68K_ADBUS);
+        LAT(M68K_DS) = 1;        // SRAM #CE
+        TRIS(M68K_ADBUS) = 0x00; // output
+    }
+    LAT(M68K_LTOE) = 1;
+
+    // do
+    switch (table[CREQ_COM]) {
+    case REQ_CONIN:
+        table[CBI_CHR] = (uint8_t)getch();
+        break;
+    case REQ_CONOUT:
+        putch((char)table[CBI_CHR]);
+        break;
+    case REQ_CONST:
+        table[CBI_CHR] = PIR9; // Out PIR9: Bit 1 - U3TXIF(TX is empty), Bit 0 - U3RXIF(RX is full)
+        break;
+    }
+    // done
+    table[CREQ_COM] = 0;
+
+    // write back
+    addr = SMBASE;
+    i = 0;
+    LAT(M68K_LTOE) = 0;
+    while (addr < SMBASE+sizeof(table)) {
+        // RAM address
+        LAT(M68K_ADBUS) = addr & 0xff;
+        LAT(M68K_LE) = 1;
+        LAT(M68K_LE) = 0;
+
+        // write
+        LAT(M68K_RW) = 0; // /WE
+        LAT(M68K_DS) = 0; // SRAM #CE
+        LAT(M68K_ADBUS) = table[i++];
+        addr += 1;
+        LAT(M68K_DS) = 1; // SRAM #CE
+        LAT(M68K_RW) = 1; // /WE
+    }
+    LAT(M68K_LTOE) = 1;
 }

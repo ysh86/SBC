@@ -56,11 +56,12 @@ data_dma:	DS.L	1	; C
 req_e:
 
 ;;;
-;;;  UREQ_COM: request command to PIC
+;;; xREQ_COM: request command to PIC
 ;;;
 
 REQ_CONIN:	equ	1	; return char in UNI_CHR
 REQ_CONOUT	equ	2	; UNI_CHR = output char
 REQ_CONST:	equ	3	; return status in UNI_CHR ( 0: no key, 1 : key exist )
 REQ_STROUT	equ	4	; string address
+;			0	; request is done by PIC
 PIC_REQ:	equ	$80000	; kick PIC
