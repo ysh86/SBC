@@ -222,9 +222,14 @@
 void exec_command(void);
 
 // ROM equivalent: Max 32KB
+#define ROM_VEC_SIZE 0xC0UL
 #define ROM_SIZE 0x2000UL
-const unsigned char rom[ROM_SIZE] __at(0xe000) = { // -1: compiler bug?
+const unsigned char rom[ROM_SIZE] __at(0xa000) = { // -1: compiler bug?
 #include "../ROM/ROM68K8.h"
+};
+#define ROMB_SIZE 0x4000UL
+const unsigned char romB[ROMB_SIZE] __at(0xc000) = { // -1: compiler bug?
+#include "../ROM/basic68k.h"
 };
 
 // SRAM: MAX 512KB
@@ -631,6 +636,35 @@ END:
 
     // Upload PIC Flash ROM -> CPU main RAM
 
+    // $00000: ROM B
+    LAT(M68K_A16) = 0;
+    LAT(M68K_A17) = 0;
+    LAT(M68K_A18) = 0;
+    addr = 0;
+    a = addr;
+    LAT(M68K_LTOE) = 0;
+    LAT(M68K_RW) = 0; // /WE
+    while (a < addr+ROMB_SIZE) {
+        // RAM address
+        LAT(M68K_ADBUS) =  a        & 0xff;
+        LAT(M68K_ADR_H) = (a >>  8) & 0xff;
+        LAT(M68K_LE) = 1;
+        LAT(M68K_LE) = 0;
+
+        // wait
+        NOP();
+        NOP();
+
+        // write
+        LAT(M68K_DS) = 0; // SRAM #CE
+        LAT(M68K_ADBUS) = romB[a-addr];
+        NOP();
+        a += 1;
+        LAT(M68K_DS) = 1; // SRAM #CE
+    }
+    LAT(M68K_RW) = 1; // /WE
+    LAT(M68K_LTOE) = 1;
+
     // $00000: vectors
     LAT(M68K_A16) = 0;
     LAT(M68K_A17) = 0;
@@ -639,7 +673,7 @@ END:
     a = addr;
     LAT(M68K_LTOE) = 0;
     LAT(M68K_RW) = 0; // /WE
-    while (a < addr+ROM_SIZE) {
+    while (a < addr+ROM_VEC_SIZE) {
         // RAM address
         LAT(M68K_ADBUS) =  a        & 0xff;
         LAT(M68K_ADR_H) = (a >>  8) & 0xff;
