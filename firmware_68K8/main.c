@@ -222,10 +222,21 @@
 void exec_command(void);
 
 // ROM equivalent: Max 32KB
+#if 0
+// BASIC
+#define SMBASE 0x100UL
+#define ROM_SIZE 0x4000UL
+const unsigned char rom[ROM_SIZE] __at(0xc000) = { // -1: compiler bug?
+#include "../../board_MEZ68K8_RAM/EhBASIC68k/basic68k.h"
+};
+#else
+// mon
+#define SMBASE 0x7FFF0UL
 #define ROM_SIZE 0x2000UL
 const unsigned char rom[ROM_SIZE] __at(0xe000) = { // -1: compiler bug?
 #include "../ROM/ROM68K8.h"
 };
+#endif
 
 // SRAM: MAX 512KB
 #if DEBUG_DUMP
@@ -859,7 +870,6 @@ END:
 #define REQ_STROUT  4   // string address
 //                  0   // request is done by PIC
 
-#define SMBASE 0x7FFF0UL
 static unsigned char table[16];
 
 void exec_command(void) {
