@@ -14,7 +14,7 @@ STACK:	EQU	$0007FFF0
 USTACK:	EQU	$0007FF00	; USP
 
 BUFLEN:	EQU	24		; Input buffer size
-VECSIZ:	EQU	256		; Number of vectors to be initialized
+VECSIZ:	EQU	48		; Number of vectors to be initialized: $C0 >> 2 -> 48 (Max 256)
 
 ;;;
 ;;; Options
