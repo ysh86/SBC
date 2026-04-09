@@ -167,9 +167,16 @@
 
 #define _XTAL_FREQ 64000000UL // for __delay_us
 
+#define FC_DUMPER 1
+
 // CPU clock: 4,6,8,10MHz
+#if FC_DUMPER
+#define CPU_CLK_MHz 4UL
+#define CPU_CLK_STR "MEZ6502RAM 4.0MHz"
+#else
 #define CPU_CLK_MHz 8UL
 #define CPU_CLK_STR "MEZ6502RAM 8.0MHz"
+#endif
 // INC = (cpu[MHz] * 2^20) * 2 / 64[MHz] = (cpu * 2^20) / 32 = cpu * 1,048,576/32 = cpu * 32768
 #define CPU_CLK_INC (CPU_CLK_MHz * 32768UL)
 
@@ -271,7 +278,11 @@ void main(void) {
 
     // Bank (RA1) output pin
     ANSELA1 = 0;	// Disable analog function
+#if FC_DUMPER
+    LATA1 = 1;		// Bank 1, /ROMSEL = H
+#else
     LATA1 = 0;		// Bank 0
+#endif
     TRISA1 = 0;		// Set as output
 
     // /WE (RA2) output pin
@@ -305,7 +316,12 @@ void main(void) {
     U3ON = 1;		// Serial port enable
 
     // Upload PIC Flash ROM -> CPU RAM
+#if FC_DUMPER
+    // monitor only
+    for (uint16_t i = 0x2000; i < ROM_SIZE; i++) {
+#else
     for (uint16_t i = 0; i < ROM_SIZE; i++) {
+#endif
         ab.w = ROM_TOP + i;
         LATD = ab.h;
         LATB = ab.l;
@@ -360,12 +376,16 @@ void main(void) {
     CLCSELECT = 0;   // Select CLC1
     CLCnCON = 0x00;  // Disable CLC
 
+#if FC_DUMPER
+    CLCnSEL0 = 58;   // CLC8: FC RAM
+#else
     CLCnSEL0 = 53;   // CLC3: /IORQ
+#endif
     CLCnSEL1 = 4;    // CLCIN4PPS <- R/W
     CLCnSEL2 = 42;   // NCO1
     CLCnSEL3 = 55;   // CLC5: RDY
 
-    CLCnGLS0 = 0x02; // /IORQ
+    CLCnGLS0 = 0x02; // is RAM
     CLCnGLS1 = 0x08; // R
     CLCnGLS2 = 0x20; // NCO1
     CLCnGLS3 = 0x80; // RDY
@@ -377,12 +397,16 @@ void main(void) {
     CLCSELECT = 1;   // Select CLC2
     CLCnCON = 0x00;  // Disable CLC
 
+#if FC_DUMPER
+    CLCnSEL0 = 58;   // CLC8: FC RAM
+#else
     CLCnSEL0 = 53;   // CLC3: /IORQ
+#endif
     CLCnSEL1 = 4;    // CLCIN4PPS <- R/W
     CLCnSEL2 = 42;   // NCO1
     CLCnSEL3 = 55;   // CLC5: RDY
 
-    CLCnGLS0 = 0x02; // /IORQ
+    CLCnGLS0 = 0x02; // is RAM
     CLCnGLS1 = 0x04; // !/W
     CLCnGLS2 = 0x20; // NCO1
     CLCnGLS3 = 0x80; // RDY
@@ -417,6 +441,88 @@ void main(void) {
     CLCnCON = 0x82;  // 4 input AND
 
     // ----------------------------------------------------------------------
+    // address decoder:
+    //
+    // 0000-3fff: FC RAM
+    // 8000-9fff: FC ROM
+    // c000-ffff: FC BOOT RAM
+    // ----------------------------------------------------------------------
+
+    //========== CLC6 FC /ROMSEL ==========
+    CLCSELECT = 5;   // Select CLC6
+    CLCnCON = 0x00;  // Disable CLC
+
+    CLCnSEL0 = 2;    // CLCIN2PPS <- A15
+    CLCnSEL1 = 3;    // CLCIN3PPS <- A14
+    CLCnSEL2 = 6;    // CLCIN6PPS <- A13
+    CLCnSEL3 = 42;   // NCO1
+
+    // $8xxx,$9xxx
+    CLCnGLS0 = 0x02; // A15=1
+    CLCnGLS1 = 0x04; // A14=0
+    CLCnGLS2 = 0x10; // A13=0
+    CLCnGLS3 = 0x80; // NCO1
+
+    CLCnPOL = 0x80;  // inverted the output of the logic cell.
+    CLCnCON = 0x82;  // 4 input AND
+
+#if 0
+    //========== CLC4 FC /RAM ==========
+    CLCSELECT = 3;   // Select CLC4
+    CLCnCON = 0x00;  // Disable CLC
+
+    CLCnSEL0 = 2;    // CLCIN2PPS <- A15
+    CLCnSEL1 = 3;    // CLCIN3PPS <- A14
+    CLCnSEL2 = 6;    // CLCIN6PPS <- A13
+    CLCnSEL3 = 127;  // N/C
+
+    // $0xxx,$1xxx
+    CLCnGLS0 = 0x01; // A15=0
+    CLCnGLS1 = 0x04; // A14=0
+    CLCnGLS2 = 0x10; // A13=0
+    CLCnGLS3 = 0x00; // not gated
+
+    CLCnPOL = 0x88;  // inverted the output of the logic cell. The gate4 outputs '1'.
+    CLCnCON = 0x82;  // 4 input AND
+
+    //========== CLC7 FC /BOOT ==========
+    CLCSELECT = 6;   // Select CLC7
+    CLCnCON = 0x00;  // Disable CLC
+
+    CLCnSEL0 = 2;    // CLCIN2PPS <- A15
+    CLCnSEL1 = 3;    // CLCIN3PPS <- A14
+    CLCnSEL2 = 6;    // CLCIN6PPS <- A13
+    CLCnSEL3 = 127;  // N/C
+
+    // $exxx,$fxxx
+    CLCnGLS0 = 0x02; // A15=1
+    CLCnGLS1 = 0x08; // A14=1
+    CLCnGLS2 = 0x20; // A13=1
+    CLCnGLS3 = 0x00; // not gated
+
+    CLCnPOL = 0x88;  // inverted the output of the logic cell. The gate4 outputs '1'.
+    CLCnCON = 0x82;  // 4 input AND
+#endif
+
+    //========== CLC8 FC RAM ==========
+    CLCSELECT = 7;   // Select CLC8
+    CLCnCON = 0x00;  // Disable CLC
+
+    CLCnSEL0 = 2;    // CLCIN2PPS <- A15
+    CLCnSEL1 = 3;    // CLCIN3PPS <- A14
+    CLCnSEL2 = 2;    // CLCIN2PPS <- A15
+    CLCnSEL3 = 3;    // CLCIN3PPS <- A14
+
+    // $0,1,2,3 or $c,d,e,f
+    CLCnGLS0 = 0x01; // A15=0
+    CLCnGLS1 = 0x04; // A14=0
+    CLCnGLS2 = 0x20; // A15=1
+    CLCnGLS3 = 0x80; // A14=1
+
+    CLCnPOL = 0x00;  // not inverted all
+    CLCnCON = 0x80;  // AND-OR
+
+    // ----------------------------------------------------------------------
     // D-FF
     // ----------------------------------------------------------------------
 
@@ -444,7 +550,11 @@ void main(void) {
     RA5PPS = 0x01; // CLC1OUT -> RA5 -> /OE
     RA2PPS = 0x02; // CLC2OUT -> RA2 -> /WE
     RA0PPS = 0x05; // CLC5OUT -> RA0 -> RDY
+#if FC_DUMPER
+    RA1PPS = 0x06; // CLC6OUT -> RA1 -> A16(/ROMSEL)
+#else
                    // CLC6OUT -> RA1 -> A16(Bank)
+#endif
 
     // Unlock IVT
     IVTLOCK = 0x55;
