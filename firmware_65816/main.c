@@ -167,20 +167,11 @@
 
 #define _XTAL_FREQ 64000000UL // for __delay_us
 
-#define TRY_SLOW_CLK 1
-
 // CPU clock: Max 8MHz
-#if !TRY_SLOW_CLK
 #define CPU_CLK_MHz 4UL
 #define CPU_CLK_STR "MEZ65816 4.0MHz"
 // INC = (cpu[MHz] * 2^20) * 2 / 64[MHz] = (cpu * 2^20) / 32 = cpu * 1,048,576/32 = cpu * 32768
 #define CPU_CLK_INC (CPU_CLK_MHz * 32768UL)
-#else
-#define CPU_CLK_kHz 215UL
-#define CPU_CLK_STR "MEZ65816 220kHz"
-// INC = (cpu[kHz] * 2^10) * 2 / 64[MHz] = (cpu * 2^10) / 32 = cpu * 1,024/32 = cpu * 32
-#define CPU_CLK_INC (CPU_CLK_kHz * 32UL) // 220,000/32 = 220 * 1000/32 = 220 * 31.25 -> 215 * 32 = 6880
-#endif
 
 // ROM equivalent: Max 16KB
 #define ROM_TOP  0xc000
@@ -197,9 +188,9 @@ volatile unsigned char ram[RAM_SIZE] __at(0x1000);
 // UART
 #define UART_SREG 0xb018 // Status REG
 #define UART_DREG 0xb019 // Data REG
-#define UART_BPS  0x1a0  //  9600bps @ 64MHz
+//#define UART_BPS  0x1a0  //  9600bps @ 64MHz
 //#define UART_BPS  0xd0   // 19200bps @ 64MHz
-//#define UART_BPS  0x68   // 38400bps @ 64MHz
+#define UART_BPS  0x68   // 38400bps @ 64MHz
 
 // UART3 Transmit
 void putch(char c) {
@@ -228,7 +219,7 @@ void __interrupt(irq(default),base(8)) Default_ISR(){}
 
 // Called at RDY falling edge(Immediately after CLK rising)
 void __interrupt(irq(CLC5),base(8)) CLC5_ISR(){
-    //CLC5IF = 0;   // Clear interrupt flag
+    CLC5IF = 0;   // Clear interrupt flag
 
     if (!CLC8OUT) {
         // Read from ROM
@@ -288,27 +279,12 @@ void __interrupt(irq(CLC5),base(8)) CLC5_ISR(){
         }
     }
 
-#if !TRY_SLOW_CLK
     // Detect CLK falling edge
     while(RA1);
     // Release RDY (D-FF reset)
     G3POL = 1;
-#if 0
-    // Wait for next CLK falling edge
-    // Only needed for slow CPU (CLK < 3MHz)
-    while(!RA1);
-    while(RA1);
-#endif
-    TRISC = 0xff; // Set data bus as input
     G3POL = 0;
-#endif
-    CLC5IF = 0;   // Clear interrupt flag
-}
-
-// Called at CLK falling edge
-void __interrupt(irq(CLC6),base(8)) CLC6_ISR(){
-    asm("setf TRISC,c \n"); // Set data bus as input
-    CLC6IF = 0;             // Clear interrupt flag
+    TRISC = 0xff; // Set data bus as input
 }
 
 // main routine
@@ -418,7 +394,7 @@ void main(void) {
     }
 
     //========== Clear all CLC outs ==========
-    CLCDATA = 0xc4; // 0b1100_0100
+    CLCDATA = 0xd4; // 0b1101_0100
 
     //========== CLC input pin assign ===========
     // CLCx Input 1,2,5,6: only PortA or C
@@ -502,44 +478,43 @@ void main(void) {
     CLCnPOL = 0x80;  // inverted the output of the logic cell.
     CLCnCON = 0x82;  // 4 input AND
 
-    //========== CLC4 VMA ==========
-    CLCSELECT = 3;   // Select CLC4
-    CLCnCON = 0x00;  // Disable CLC
-
-    CLCnSEL0 = 53;   // CLC3: /IORQ
-    CLCnSEL1 = 57;   // CLC7: /RAM
-    CLCnSEL2 = 58;   // CLC8: /ROM
-    CLCnSEL3 = 127;  // N/C
-
-    CLCnGLS0 = 0x02; // /IORQ
-    CLCnGLS1 = 0x08; // /RAM
-    CLCnGLS2 = 0x20; // /ROM
-    CLCnGLS3 = 0x40; // !0 =1
-
-    CLCnPOL = 0x80;  // inverted the output of the logic cell.
-    CLCnCON = 0x82;  // 4 input AND
-
     // ----------------------------------------------------------------------
     // D-FF
     // ----------------------------------------------------------------------
 
-#if !TRY_SLOW_CLK
     //========== CLC5 RDY ==========
     CLCSELECT = 4;   // Select CLC5
     CLCnCON = 0x00;  // Disable CLC
 
     CLCnSEL0 = 42;   // NCO1
-    CLCnSEL1 = 54;   // CLC4: VMA
+    CLCnSEL1 = 55;   // CLC5: RDY
+    CLCnSEL2 = 56;   // CLC6: wait
+    CLCnSEL3 = 127;  // N/C
+
+    CLCnGLS0 = 0x02; // D-FF CLK <- NCO1 (pos edge)
+    CLCnGLS1 = 0x18; // D-FF D0  <- (!A or B)
+    CLCnGLS2 = 0x00; // D-FF R   <- not gated ('0')
+    CLCnGLS3 = 0x24; // D-FF D1  <- (A or !B)
+
+    CLCnPOL = 0x8a;  // inverted the output of the logic cell, !D0 or !D1 => RDY xor wait
+    CLCnCON = 0x8d;  // Select 2-input D-FF, falling edge inturrupt
+
+    //========== CLC6 wait ==========
+    CLCSELECT = 5;   // Select CLC6
+    CLCnCON = 0x00;  // Disable CLC
+
+    CLCnSEL0 = 55;   // CLC5: RDY
+    CLCnSEL1 = 127;  // N/C
     CLCnSEL2 = 127;  // N/C
     CLCnSEL3 = 127;  // N/C
 
-    CLCnGLS0 = 0x01; // D-FF CLK <- inv!NCO1 = CLK (pos edge)
-    CLCnGLS1 = 0x08; // D-FF D   <- VMA
+    CLCnGLS0 = 0x01; // D-FF CLK <- !RDY (neg edge)
+    CLCnGLS1 = 0x00; // D-FF D   <- !0 =1
     CLCnGLS2 = 0x00; // D-FF R   <- not gated ('0') <- G3POL
     CLCnGLS3 = 0x00; // D-FF S   <- not gated ('0')
 
-    CLCnPOL = 0x81;  // inverted the output of the logic cell. inverted D-FF CLK.
-    CLCnCON = 0x8c;  // Select D-FF, falling edge inturrupt
+    CLCnPOL = 0x02;  // inverted D-FF D.
+    CLCnCON = 0x84;  // Select D-FF
 
     //========== CLC output pin assign ===========
     // CLCxOUT: 0x01-0x08
@@ -547,41 +522,6 @@ void main(void) {
     // CLCx Output 3,4,7,8: only PortB or D
     RA5PPS = 0x05;    // CLC5OUT -> RA5 -> RDY
                       // CLC6OUT -> RA2 -> A16(Bank)
-#else
-    //========== CLC5 CLK pos edge ==========
-    CLCSELECT = 4;   // Select CLC5
-    CLCnCON = 0x00;  // Disable CLC
-
-    CLCnSEL0 = 42;   // NCO1
-    CLCnSEL1 = 127;  // N/C
-    CLCnSEL2 = 127;  // N/C
-    CLCnSEL3 = 127;  // N/C
-
-    CLCnGLS0 = 0x02; // CLK
-    CLCnGLS1 = 0x04; // !0 =1
-    CLCnGLS2 = 0x10; // !0 =1
-    CLCnGLS3 = 0x40; // !0 =1
-
-    CLCnPOL = 0x00;  // not inverted all
-    CLCnCON = 0x92;  // 4 input AND, interrupt on pos edge
-
-    //========== CLC6 CLK neg edge ==========
-    CLCSELECT = 5;   // Select CLC6
-    CLCnCON = 0x00;  // Disable CLC
-
-    CLCnSEL0 = 42;   // NCO1
-    CLCnSEL1 = 127;  // N/C
-    CLCnSEL2 = 127;  // N/C
-    CLCnSEL3 = 127;  // N/C
-
-    CLCnGLS0 = 0x02; // CLK
-    CLCnGLS1 = 0x04; // !0 =1
-    CLCnGLS2 = 0x10; // !0 =1
-    CLCnGLS3 = 0x40; // !0 =1
-
-    CLCnPOL = 0x00;  // not inverted all
-    CLCnCON = 0x8A;  // 4 input AND, interrupt on neg edge
-#endif
 
     // Unlock IVT
     IVTLOCK = 0x55;
@@ -597,22 +537,18 @@ void main(void) {
     IVTLOCKbits.IVTLOCKED = 0x01;
 
     // Enable CLC VI
-#if !TRY_SLOW_CLK
     CLC5IF = 0; // Clear the CLC5 interrupt flag
     CLC5IE = 1; // Enabling CLC5 interrupt
 
     // Start CPU
     GIE = 1;   // Enable global interrupt
-#else
-    CLC5IF = 0; // Clear the CLC5 interrupt flag
-    CLC6IF = 0; // Clear the CLC6 interrupt flag
-
-    GIE = 1;    // Enable global interrupt
-
-    CLC5IE = 1; // Enabling CLC5 interrupt (CLK pos edge)
-    CLC6IE = 1; // Enabling CLC6 interrupt (CLK neg edge)
-#endif
     LATA0 = 1; // Release reset
+
+    // Detect CLK falling edge
+    while(RA1);
+    // Release RDY (D-FF reset)
+    G3POL = 1;
+    G3POL = 0;
 
     // All things come to those who wait
     while(1);
