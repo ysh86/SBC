@@ -167,11 +167,8 @@
 
 #define _XTAL_FREQ 64000000UL // for __delay_us
 
-// CPU clock: Max 8MHz
-#define CPU_CLK_MHz 4UL
-#define CPU_CLK_STR "MEZ65816 4.0MHz"
-// INC = (cpu[MHz] * 2^20) * 2 / 64[MHz] = (cpu * 2^20) / 32 = cpu * 1,048,576/32 = cpu * 32768
-#define CPU_CLK_INC (CPU_CLK_MHz * 32768UL)
+// CPU clock
+#define CPU_CLK_STR "MEZ65816 adaptive clock"
 
 // ROM equivalent: Max 16KB
 #define ROM_TOP  0xc000
@@ -216,76 +213,6 @@ union {
 
 // Never called, logically
 void __interrupt(irq(default),base(8)) Default_ISR(){}
-
-// Called at RDY falling edge(Immediately after CLK rising)
-void __interrupt(irq(CLC5),base(8)) CLC5_ISR(){
-    CLC5IF = 0;   // Clear interrupt flag
-
-    if (!CLC8OUT) {
-        // Read from ROM
-        //TRISC = 0x00;               // Set data bus as output
-        //LATC = rom[ab.w - ROM_TOP];
-        asm(
-          "clrf  TRISC,c          \n" // Set data bus as output
-          "movff PORTB,TBLPTRL    \n"
-          "movff PORTD,TBLPTRH    \n"
-          "tblrd *                \n" // This address matches both the CPU address and the PIC table address.
-          "movff TABLAT,LATC      \n"
-        );
-    } else if (!CLC7OUT) {
-        // RAM area
-        if (RA3) {
-            // Read from RAM
-            //TRISC = 0x00;               // Set data bus as output
-            //LATC = ram[ab.w & (RAM_SIZE - 1)];
-            asm(
-              "clrf  TRISC,c          \n" // Set data bus as output
-              "movff PORTB,FSR2L      \n"
-              "movf  PORTD,w          \n"
-              "andlw 0x0F             \n" // Mask the CPU address to fit the RAM size
-              "iorlw 0x10             \n" // Map CPU address 0x0xxx to PIC RAM address 0x1xxx
-              "movwf FSR2H,c          \n"
-              "movff INDF2,LATC       \n"
-            );
-        } else {
-            // Write into RAM
-            //ram[ab.w & (RAM_SIZE - 1)] = PORTC;
-            asm(
-              "movff PORTB,FSR2L      \n"
-              "movf  PORTD,w          \n"
-              "andlw 0x0F             \n" // Mask the CPU address to fit the RAM size
-              "iorlw 0x10             \n" // Map CPU address 0x0xxx to PIC RAM address 0x1xxx
-              "movwf FSR2H,c          \n"
-              "movff PORTC,INDF2      \n"
-            );
-        }
-    } else if (!CLC3OUT) {
-        // I/O area
-        ab.h = PORTD; // Read address high
-        ab.l = PORTB; // Read address low
-        if (RA3) {
-            // Read from I/O
-            TRISC = 0x00;               // Set data bus as output
-            if (ab.w == UART_SREG)      // UART Status
-                LATC = PIR9;            // Out PIR9: Bit 1 - U3TXIF(TX is empty), Bit 0 - U3RXIF(RX is full)
-            else if (ab.w == UART_DREG) // UART RX
-                LATC = U3RXB;           // Out U3RXB
-            else                        // Out of memory
-                LATC = 0xff;            // Invalid data
-        } else {
-            // Write into I/O
-            if (ab.w == UART_DREG)      // UART TX
-                U3TXB = PORTC;          // Write into U3TXB
-        }
-    }
-
-    // Detect CLK falling edge
-    while(RA1);
-    // Release RDY (D-FF reset)
-    G3POL = 1;
-    G3POL = 0;
-    TRISC = 0xff; // Set data bus as input
-}
 
 // main routine
 void main(void) {
@@ -333,15 +260,10 @@ void main(void) {
     WPUC = 0xff;   // Weak pull up
     TRISC = 0xff;  // Set as input
 
-    // CPU clock(RA1) by NCO FDC mode
-    RA1PPS = 0x3f;  // RA1 assign NCO1
+    // CPU clock(RA1) by GPIO
     ANSELA1 = 0;    // Disable analog function
-    TRISA1 = 0;     // NCO output pin
-    NCO1INC = CPU_CLK_INC;
-    NCO1CLK = 0x00; // Clock source Fosc = 64MHz
-    NCO1PFM = 0;    // Fixed Duty Cycle mode
-    NCO1OUT = 1;    // NCO output enable
-    NCO1EN = 1;     // NCO enable
+    LATA1 = 0;      // low
+    TRISA1 = 0;     // Set as output
 
     // RDY (RA5) output pin (Low = Halt)
     ANSELA5 = 0;	// Disable analog function
@@ -394,7 +316,7 @@ void main(void) {
     }
 
     //========== Clear all CLC outs ==========
-    CLCDATA = 0xd4; // 0b1101_0100
+    CLCDATA = 0xc4; // 0b1100_0100
 
     //========== CLC input pin assign ===========
     // CLCx Input 1,2,5,6: only PortA or C
@@ -478,51 +400,6 @@ void main(void) {
     CLCnPOL = 0x80;  // inverted the output of the logic cell.
     CLCnCON = 0x82;  // 4 input AND
 
-    // ----------------------------------------------------------------------
-    // D-FF
-    // ----------------------------------------------------------------------
-
-    //========== CLC5 RDY ==========
-    CLCSELECT = 4;   // Select CLC5
-    CLCnCON = 0x00;  // Disable CLC
-
-    CLCnSEL0 = 42;   // NCO1
-    CLCnSEL1 = 55;   // CLC5: RDY
-    CLCnSEL2 = 56;   // CLC6: wait
-    CLCnSEL3 = 127;  // N/C
-
-    CLCnGLS0 = 0x02; // D-FF CLK <- NCO1 (pos edge)
-    CLCnGLS1 = 0x18; // D-FF D0  <- (!A or B)
-    CLCnGLS2 = 0x00; // D-FF R   <- not gated ('0')
-    CLCnGLS3 = 0x24; // D-FF D1  <- (A or !B)
-
-    CLCnPOL = 0x8a;  // inverted the output of the logic cell, !D0 or !D1 => RDY xor wait
-    CLCnCON = 0x8d;  // Select 2-input D-FF, falling edge inturrupt
-
-    //========== CLC6 wait ==========
-    CLCSELECT = 5;   // Select CLC6
-    CLCnCON = 0x00;  // Disable CLC
-
-    CLCnSEL0 = 55;   // CLC5: RDY
-    CLCnSEL1 = 127;  // N/C
-    CLCnSEL2 = 127;  // N/C
-    CLCnSEL3 = 127;  // N/C
-
-    CLCnGLS0 = 0x01; // D-FF CLK <- !RDY (neg edge)
-    CLCnGLS1 = 0x00; // D-FF D   <- !0 =1
-    CLCnGLS2 = 0x00; // D-FF R   <- not gated ('0') <- G3POL
-    CLCnGLS3 = 0x00; // D-FF S   <- not gated ('0')
-
-    CLCnPOL = 0x02;  // inverted D-FF D.
-    CLCnCON = 0x84;  // Select D-FF
-
-    //========== CLC output pin assign ===========
-    // CLCxOUT: 0x01-0x08
-    // CLCx Output 1,2,5,6: only PortA or C
-    // CLCx Output 3,4,7,8: only PortB or D
-    RA5PPS = 0x05;    // CLC5OUT -> RA5 -> RDY
-                      // CLC6OUT -> RA2 -> A16(Bank)
-
     // Unlock IVT
     IVTLOCK = 0x55;
     IVTLOCK = 0xAA;
@@ -536,20 +413,87 @@ void main(void) {
     IVTLOCK = 0xAA;
     IVTLOCKbits.IVTLOCKED = 0x01;
 
-    // Enable CLC VI
-    CLC5IF = 0; // Clear the CLC5 interrupt flag
-    CLC5IE = 1; // Enabling CLC5 interrupt
-
     // Start CPU
+    for (int i = 0; i < 10; ++i) {
+        // my cycle
+        LATA1 = 1;
+        __delay_us(100);
+
+        // CPU cycle
+        LATA1 = 0;
+        __delay_us(100);
+    }
     GIE = 1;   // Enable global interrupt
     LATA0 = 1; // Release reset
 
-    // Detect CLK falling edge
-    while(RA1);
-    // Release RDY (D-FF reset)
-    G3POL = 1;
-    G3POL = 0;
+    while(1) {
+        // Start my cycle: access to address and data bus is valid in this period
+        LATA1 = 1;
 
-    // All things come to those who wait
-    while(1);
+        if (!CLC8OUT) {
+            // Read from ROM
+            //TRISC = 0x00;               // Set data bus as output
+            //LATC = rom[ab.w - ROM_TOP];
+            asm(
+              "clrf  TRISC,c          \n" // Set data bus as output
+              "movff PORTB,TBLPTRL    \n"
+              "movff PORTD,TBLPTRH    \n"
+              "tblrd *                \n" // This address matches both the CPU address and the PIC table address.
+              "movff TABLAT,LATC      \n"
+            );
+        } else if (!CLC7OUT) {
+            // RAM area
+            if (RA3) {
+                // Read from RAM
+                //TRISC = 0x00;               // Set data bus as output
+                //LATC = ram[ab.w & (RAM_SIZE - 1)];
+                asm(
+                  "clrf  TRISC,c          \n" // Set data bus as output
+                  "movff PORTB,FSR2L      \n"
+                  "movf  PORTD,w          \n"
+                  "andlw 0x0F             \n" // Mask the CPU address to fit the RAM size
+                  "iorlw 0x10             \n" // Map CPU address 0x0xxx to PIC RAM address 0x1xxx
+                  "movwf FSR2H,c          \n"
+                  "movff INDF2,LATC       \n"
+                );
+            } else {
+                // Write into RAM
+                //ram[ab.w & (RAM_SIZE - 1)] = PORTC;
+                asm(
+                  "movff PORTB,FSR2L      \n"
+                  "movf  PORTD,w          \n"
+                  "andlw 0x0F             \n" // Mask the CPU address to fit the RAM size
+                  "iorlw 0x10             \n" // Map CPU address 0x0xxx to PIC RAM address 0x1xxx
+                  "movwf FSR2H,c          \n"
+                  "movff PORTC,INDF2      \n"
+                );
+            }
+        } else if (!CLC3OUT) {
+            // I/O area
+            ab.h = PORTD; // Read address high
+            ab.l = PORTB; // Read address low
+            if (RA3) {
+                // Read from I/O
+                TRISC = 0x00;               // Set data bus as output
+                if (ab.w == UART_SREG)      // UART Status
+                    LATC = PIR9;            // Out PIR9: Bit 1 - U3TXIF(TX is empty), Bit 0 - U3RXIF(RX is full)
+                else if (ab.w == UART_DREG) // UART RX
+                    LATC = U3RXB;           // Out U3RXB
+                else                        // Out of memory
+                    LATC = 0xff;            // Invalid data
+            } else {
+                // Write into I/O
+                if (ab.w == UART_DREG)      // UART TX
+                    U3TXB = PORTC;          // Write into U3TXB
+            }
+        }
+
+        LATA1 = 0;
+        // End my cycle
+
+        // CPU starts to setup address and data bus after this point,
+        // so access to them should be avoided in this period.
+
+        TRISC = 0xff; // Set data bus as input
+    }
 }
