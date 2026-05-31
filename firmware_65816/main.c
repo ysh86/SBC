@@ -164,6 +164,8 @@
 // Use project enums instead of #define for ON and OFF.
 
 #include <xc.h>
+#include <stdint.h>
+#include <stdbool.h>
 
 #define _XTAL_FREQ 64000000UL // for __delay_us
 
@@ -181,10 +183,13 @@ const unsigned char rom[ROM_SIZE] __at(0xc000) = {
 #define RAM_TOP  0x0000
 #define RAM_SIZE 0x1000
 volatile unsigned char ram[RAM_SIZE] __at(0x1000);
+const unsigned char ram_init[RAM_SIZE] __at(0x10000) = {
+#include "../ROM/RAM4KB.h"
+};
 
 // UART
-#define UART_SREG 0xb018 // Status REG
-#define UART_DREG 0xb019 // Data REG
+#define UART_SREG 0x4018 // Status REG
+#define UART_DREG 0x4019 // Data REG
 //#define UART_BPS  0x1a0  //  9600bps @ 64MHz
 //#define UART_BPS  0xd0   // 19200bps @ 64MHz
 #define UART_BPS  0x68   // 38400bps @ 64MHz
@@ -304,9 +309,11 @@ void main(void) {
     //   or
     // Clear RAM
     for (unsigned int i = 0; i < RAM_SIZE; i++) {
-        //ram[i] = rom[i];
-        ram[i] = 0;
+        ram[i] = ram_init[i];
+        // ram[i] = 0;
     }
+    const unsigned char resetL = ram[0x0ffc];
+    const unsigned char resetH = ram[0x0ffd];
 
     //==========    CPU info    ===========
     const char *cpu_info = "\r\n" CPU_CLK_STR "\r\n";
@@ -342,7 +349,7 @@ void main(void) {
     // address decoder:
     //
     // 0000-0fff: RAM
-    // b000-bfff: I/O regs
+    // 4000-4fff: I/O regs
     // c000-ffff: ROM
     // ----------------------------------------------------------------------
 
@@ -355,11 +362,11 @@ void main(void) {
     CLCnSEL2 = 6;    // CLCIN6PPS <- A13
     CLCnSEL3 = 7;    // CLCIN7PPS <- A12
 
-    // $bxxx
-    CLCnGLS0 = 0x02; // A15=1
-    CLCnGLS1 = 0x04; // A14=0
-    CLCnGLS2 = 0x20; // A13=1
-    CLCnGLS3 = 0x80; // A12=1
+    // $4xxx
+    CLCnGLS0 = 0x01; // A15=0
+    CLCnGLS1 = 0x08; // A14=1
+    CLCnGLS2 = 0x10; // A13=0
+    CLCnGLS3 = 0x40; // A12=0
 
     CLCnPOL = 0x80;  // inverted the output of the logic cell.
     CLCnCON = 0x82;  // 4 input AND
@@ -425,6 +432,36 @@ void main(void) {
     }
     GIE = 1;   // Enable global interrupt
     LATA0 = 1; // Release reset
+
+    // Overwrite the CPU reset vector in ROM with the actual reset vector stored in RAM,
+    // so that the CPU can start executing the code in RAM after reset.
+    bool found = false;
+    bool finish = false;
+    __delay_us(1);
+    while(1) {
+        LATA1 = 1;
+        ab.h = PORTD;
+        ab.l = PORTB;
+        bool is1st = (!CLC8OUT && ab.w == 0xfffc);
+        bool is2nd = (!CLC8OUT && ab.w == 0xfffd);
+        if (!found && is1st) {
+            TRISC = 0x00;            // Set data bus as output
+            LATC = resetL;           // Out reset vector low byte
+            found = true;
+        } else if (found && is2nd) {
+            TRISC = 0x00;            // Set data bus as output
+            LATC = resetH;           // Out reset vector high byte
+            finish = true;
+        } else {
+            found = false;
+        }
+        LATA1 = 0;
+        TRISC = 0xff; // Set data bus as input
+
+        if (finish) {
+            break;
+        }
+    }
 
     while(1) {
         // Start my cycle: access to address and data bus is valid in this period
