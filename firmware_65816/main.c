@@ -281,10 +281,10 @@ void main(void) {
     WPUA3 = 1;		// Weak pull up
     TRISA3 = 1;		// Set as input
 
-    // Bank (RA2) output pin
+    // /ROMSEL (RA2) output pin
     ANSELA2 = 0;	// Disable analog function
     RA2PPS = 0x00;	// LATA2 -> RA2
-    LATA2 = 0;		// Bank 0
+    LATA2 = 1;		// ROMSEL inactive (High)
     TRISA2 = 0;		// Set as output
 
     // UART3 initialize
@@ -323,7 +323,7 @@ void main(void) {
     }
 
     //========== Clear all CLC outs ==========
-    CLCDATA = 0xc4; // 0b1100_0100
+    CLCDATA = 0xf4; // 0b1111_0100
 
     //========== CLC input pin assign ===========
     // CLCx Input 1,2,5,6: only PortA or C
@@ -333,7 +333,7 @@ void main(void) {
     // PortC: 0b00_010_xxx
     // PortD: 0b00_011_xxx
     // PortE: cannot be connected to CLC inputs/outputs
-//  CLCIN0PPS
+    CLCIN0PPS = 0x01; // CLCIN0PPS <- RA1 <- CPU clock
 //  CLCIN1PPS
 
     CLCIN2PPS = 0x1f; // CLCIN2PPS <- RD7 <- A15
@@ -349,8 +349,12 @@ void main(void) {
     // address decoder:
     //
     // 0000-0fff: RAM
+    //(1000-3fff: N/A)
     // 4000-4fff: I/O regs
-    // c000-ffff: ROM
+    //(5000-5fff: MMC regs)
+    // 6000-7fff: WRAM
+    // 8000-bfff: Ext. ROM & MMC regs
+    // c000-ffff: ROM & MMC regs
     // ----------------------------------------------------------------------
 
     //========== CLC3 I/O /IORQ ==========
@@ -406,6 +410,52 @@ void main(void) {
 
     CLCnPOL = 0x80;  // inverted the output of the logic cell.
     CLCnCON = 0x82;  // 4 input AND
+
+    //========== CLC6 /ROMSEL ==========
+    CLCSELECT = 5;   // Select CLC6
+    CLCnCON = 0x00;  // Disable CLC
+
+    CLCnSEL0 = 0;    // CLCIN0PPS <- CPU clock
+    CLCnSEL1 = 2;    // CLCIN2PPS <- A15
+    CLCnSEL2 = 55;   // CLC5: myrom (1: my ROM, 0: ext. ROM)
+    CLCnSEL3 = 127;  // N/C
+
+    // ext. ROM
+    CLCnGLS0 = 0x02; // CLK=1
+    CLCnGLS1 = 0x08; // A15=1
+    CLCnGLS2 = 0x10; // myrom=0
+    CLCnGLS3 = 0x40; // !0 =1
+
+    CLCnPOL = 0x80;  // inverted the output of the logic cell.
+    CLCnCON = 0x82;  // 4 input AND
+
+    // ----------------------------------------------------------------------
+    // D-FF
+    // ----------------------------------------------------------------------
+
+    //========== CLC5 myrom ==========
+    CLCSELECT = 4;  // Select CLC5
+    CLCnCON = 0x00; // Disable CLC
+
+    CLCnSEL0 = 0;   // CLCIN0PPS <- CPU clock
+    CLCnSEL1 = 2;   // CLCIN2PPS <- A15
+    CLCnSEL2 = 127; // N/C
+    CLCnSEL3 = 127; // N/C
+
+    CLCnGLS0 = 0x02; // D-FF CLK <- CPU clock (pos edge)
+    CLCnGLS1 = 0x08; // D-FF D   <- A15
+    CLCnGLS2 = 0x00; // D-FF R   <- not gated ('0') <- G3POL
+    CLCnGLS3 = 0x00; // D-FF S   <- not gated ('0')
+
+    CLCnPOL = 0x80; // inverted the output of the logic cell.
+    G3POL = 1;      // reset D-FF then D-FF output = 1 at the beginning
+    CLCnCON = 0x84; // Select D-FF
+
+    //========== CLC output pin assign ===========
+    // CLCxOUT: 0x01-0x08
+    // CLCx Output 1,2,5,6: only PortA or C
+    // CLCx Output 3,4,7,8: only PortB or D
+    RA2PPS = 0x06; // CLC6OUT -> RA2 -> /ROMSEL
 
     // Unlock IVT
     IVTLOCK = 0x55;
@@ -467,7 +517,7 @@ void main(void) {
         // Start my cycle: access to address and data bus is valid in this period
         LATA1 = 1;
 
-        if (!CLC8OUT) {
+        if (!CLC8OUT && G3POL) {
             // Read from ROM
             //TRISC = 0x00;               // Set data bus as output
             //LATC = rom[ab.w - ROM_TOP];
@@ -517,11 +567,14 @@ void main(void) {
                 else if (ab.w == UART_DREG) // UART RX
                     LATC = U3RXB;           // Out U3RXB
                 else                        // Out of memory
-                    LATC = 0xff;            // Invalid data
+                    LATC = G3POL;           // ROM status (1: my ROM, 0: ext. ROM)
             } else {
                 // Write into I/O
                 if (ab.w == UART_DREG)      // UART TX
                     U3TXB = PORTC;          // Write into U3TXB
+                else {
+                    G3POL = PORTC & 0x01;   // 1: my ROM, 0: ext. ROM
+                }
             }
         }
 
