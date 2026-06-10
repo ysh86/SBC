@@ -1,17 +1,19 @@
 .program data_bus_read
-; CPU writes one word to the TX FIFO for each MPU read cycle:
-;   bits  0..7  = data byte
-;   bits  8..15 = data GPIO directions, normally 0xff to drive the bus
-;   bits 16..23 = release directions, normally 0x00 for input/Hi-Z
+; The first FIFO word primes Y with the data GPIO direction mask, normally
+; 0xff. After that, CPU writes one low-byte data value to the TX FIFO for
+; each MPU read cycle.
 ;
 ; The data GPIOs are configured as OUT pins. After E falls, the state
-; machine consumes bits 16..23 and releases them before the next read byte.
+; machine consumes zero bits left in OSR and releases GPIO16-23 to input/Hi-Z.
+    pull block
+    out y, 8
 .wrap_target
     pull block
     out pins, 8
-    out pindirs, 8
+    mov osr, y        ; Pico 2 PIO v1: omit this line
+    out pindirs, 8    ; Pico 2 PIO v1: replace this with "mov pindirs, y"
     wait 0 gpio 24
-    out pindirs, 8
+    out pindirs, 8    ; Pico 2 PIO v1: replace this with "mov pindirs, null"
 .wrap
 
 .program clock_8mhz

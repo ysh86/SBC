@@ -47,7 +47,6 @@ enum {
     RW_MASK = 1u << PIN_RW,
     VMA_MASK = 1u << PIN_VMA,
     VALID_CYCLE_MASK = E_MASK | VMA_MASK,
-    DATA_BUS_DRIVE_WORD = 0xff00u,
 };
 
 enum {
@@ -91,7 +90,7 @@ static inline __attribute__((always_inline)) void acia_write_data(uint8_t value)
 }
 
 static inline __attribute__((always_inline)) void drive_data_bus_for_read(uint8_t value) {
-    bus_pio->txf[data_sm] = DATA_BUS_DRIVE_WORD | value;
+    bus_pio->txf[data_sm] = value;
 }
 
 static void usb_puts_raw(const char *text) {
@@ -188,6 +187,7 @@ static void init_data_bus_pio(PIO pio, uint sm) {
     pio_sm_set_consecutive_pindirs(pio, sm, PIN_DATA_BASE, PIN_DATA_COUNT, false);
     pio_sm_clear_fifos(pio, sm);
     pio_sm_init(pio, sm, offset, &config);
+    pio->txf[sm] = 0xffu;
     pio_sm_set_enabled(pio, sm, true);
 }
 

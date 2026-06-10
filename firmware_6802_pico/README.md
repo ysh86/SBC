@@ -54,7 +54,7 @@ This maps directly to RP2040 `sio_hw->fifo_st & 0x03`, so the hot path reads the
 
 Core 0 is dedicated to the MPU bus loop. It polls until E and VMA are both high, samples address/R/W via `sio_hw->gpio_in`, decodes only the two ACIA read addresses before falling through to `memory[address]`, and services the loop from SRAM-resident code. On MPU write cycles, core 0 waits for E to fall, then samples GPIO16-23 from that same E-low `gpio_in` snapshot before committing RAM or ACIA data writes.
 
-The data GPIOs are assigned to PIO, not SIO. On a read cycle core 0 pushes one word into the PIO TX FIFO: low 8 bits are the data value, next 8 bits are the direction mask. The PIO state machine drives the data bus, waits for E to fall, then releases GPIO16-23 to input/Hi-Z. This avoids bus contention on the next write cycle.
+The data GPIOs are assigned to PIO, not SIO. During initialization core 0 primes the PIO state machine with the `$ff` direction mask. On each read cycle core 0 pushes only the low-byte data value into the PIO TX FIFO. The PIO state machine outputs the byte, reloads the direction mask from Y, drives the data bus, waits for E to fall, then releases GPIO16-23 to input/Hi-Z. This avoids bus contention on the next write cycle.
 
 Core 1 owns USB CDC stdio and exchanges UART data with core 0 through the RP2040 SIO core-to-core FIFO. From core 0's perspective, FIFO `VLD` is ACIA RDRF and FIFO `RDY` is ACIA TDRE. MPU reads from `$8001` never block; if no byte is available they return `$ff`. MPU writes to `$8001` write one byte to the SIO FIFO when it has room; otherwise the byte is dropped.
 
