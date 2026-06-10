@@ -27,6 +27,9 @@ enum {
 
 enum {
     SYS_CLOCK_KHZ = 128000,
+    PIO_CLOCK_DIV_LOG2 = 4,
+    MPU_CLOCK_DIV_LOG2 = 2,
+    MPU_CLOCK_KHZ = SYS_CLOCK_KHZ >> (PIO_CLOCK_DIV_LOG2 + MPU_CLOCK_DIV_LOG2),
     MEMORY_SIZE = 64 * 1024,
     RAM_SIZE = 32 * 1024,
     ROM_SIZE = 16 * 1024,
@@ -91,10 +94,40 @@ static inline __attribute__((always_inline)) void drive_data_bus_for_read(uint8_
     bus_pio->txf[data_sm] = DATA_BUS_DRIVE_WORD | value;
 }
 
+static void usb_puts_raw(const char *text) {
+    while (*text != '\0') {
+        putchar_raw(*text++);
+    }
+}
+
+static void usb_put_uint_raw(uint32_t value) {
+    char digits[10];
+    uint count = 0;
+
+    do {
+        digits[count++] = (char)('0' + (value % 10u));
+        value /= 10u;
+    } while (value != 0u);
+
+    while (count != 0u) {
+        putchar_raw(digits[--count]);
+    }
+}
+
+static void usb_write_banner(void) {
+    usb_puts_raw("\nPico 6802 ");
+    usb_put_uint_raw(MPU_CLOCK_KHZ);
+    usb_puts_raw(" kHz\n\n");
+}
+
 static void __not_in_flash_func(usb_core_entry)(void) {
     (void)stdio_usb_init();
     drain_core_fifo();
     usb_core_ready = true;
+
+    if (stdio_usb_connected()) {
+        usb_write_banner();
+    }
 
     for (;;) {
         bool connected = stdio_usb_connected();
@@ -193,8 +226,19 @@ static void __attribute__((noinline, noreturn)) __not_in_flash_func(bus_service_
             }
 
             drive_data_bus_for_read(value);
+
+            do {
+                pins = sio_hw->gpio_in;
+            } while (pins & E_MASK);
         } else {
-            uint8_t value = (uint8_t)(sio_hw->gpio_in >> PIN_DATA_BASE);
+            uint32_t data_pins;
+
+            do {
+                data_pins = pins;
+                pins = sio_hw->gpio_in;
+            } while (pins & E_MASK);
+
+            uint8_t value = (uint8_t)(data_pins >> PIN_DATA_BASE);
 
             if (address < RAM_SIZE) {
                 memory[address] = value;
@@ -202,10 +246,6 @@ static void __attribute__((noinline, noreturn)) __not_in_flash_func(bus_service_
                 acia_write_data(value);
             }
         }
-
-        do {
-            pins = sio_hw->gpio_in;
-        } while (pins & E_MASK);
     }
 }
 
@@ -225,8 +265,6 @@ int main(void) {
 
     uint32_t irq_state = save_and_disable_interrupts();
     (void)irq_state;
-
-    printf("\nPico 6802 %d kHz\n\n", (SYS_CLOCK_KHZ >> 4) >> 2);
 
     gpio_put(PIN_RESET_N, true);
     bus_service_loop();
