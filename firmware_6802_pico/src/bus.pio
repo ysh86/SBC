@@ -1,0 +1,22 @@
+.program data_bus_read
+; CPU writes one word to the TX FIFO for each MPU read cycle:
+;   bits  0..7  = data byte
+;   bits  8..15 = data GPIO directions, normally 0xff to drive the bus
+;   bits 16..23 = release directions, normally 0x00 for input/Hi-Z
+;
+; The data GPIOs are configured as OUT pins. After E falls, the state
+; machine consumes bits 16..23 and releases them before the next read byte.
+.wrap_target
+    pull block
+    out pins, 8
+    out pindirs, 8
+    wait 0 gpio 24
+    out pindirs, 8
+.wrap
+
+.program clock_8mhz
+; Run this state machine at 128 MHz. Each half-period is 8 PIO cycles.
+.wrap_target
+    set pins, 1 [7]
+    set pins, 0 [7]
+.wrap

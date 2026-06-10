@@ -1,0 +1,42 @@
+cmake_minimum_required(VERSION 3.13)
+
+include($ENV{PICO_SDK_PATH}/external/pico_sdk_import.cmake)
+
+project(pico_mpu_6802 C CXX ASM)
+
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
+
+pico_sdk_init()
+
+add_executable(pico_mpu_6802
+    src/main.c
+)
+
+pico_generate_pio_header(pico_mpu_6802
+    ${CMAKE_CURRENT_LIST_DIR}/src/bus.pio
+)
+
+target_compile_options(pico_mpu_6802 PRIVATE
+    -O3
+)
+
+target_compile_definitions(pico_mpu_6802 PRIVATE
+    PICO_STDIO_DEFAULT_CRLF=0
+    PICO_STDIO_USB_DEFAULT_CRLF=0
+    PICO_STDIO_USB_CONNECT_WAIT_TIMEOUT_MS=0
+    PICO_STDIO_USB_ENABLE_RESET_VIA_BAUD_RATE=0
+    PICO_STDIO_USB_ENABLE_RESET_VIA_VENDOR_INTERFACE=0
+)
+
+target_link_libraries(pico_mpu_6802 PRIVATE
+    pico_stdlib
+    pico_multicore
+    hardware_clocks
+    hardware_pio
+)
+
+pico_enable_stdio_usb(pico_mpu_6802 1)
+pico_enable_stdio_uart(pico_mpu_6802 0)
+
+pico_add_extra_outputs(pico_mpu_6802)
