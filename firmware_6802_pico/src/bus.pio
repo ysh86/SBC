@@ -23,8 +23,8 @@ wait_low:
 .wrap
 
 .program clock_8mhz
-; Run this state machine at 128 MHz. Each half-period is 8 PIO cycles.
+; Run this state machine at 160 MHz. Each half-period is 10 PIO cycles.
 .wrap_target
-    set pins, 1 [7]
-    set pins, 0 [7]
+    set pins, 1 [9]
+    set pins, 0 [9]
 .wrap

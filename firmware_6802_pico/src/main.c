@@ -21,23 +21,25 @@ enum {
     PIN_E = 24,
     PIN_RW = 25,
     PIN_VMA = 26,
+    PIN_MR = 27,
     PIN_RESET_N = 28,
     PIN_CLK_OUT = 29,
 };
 
 enum {
-    SYS_CLOCK_KHZ = 128000,
-    PIO_CLOCK_DIV_LOG2 = 4,
-    MPU_CLOCK_DIV_LOG2 = 2,
-    MPU_CLOCK_KHZ = SYS_CLOCK_KHZ >> (PIO_CLOCK_DIV_LOG2 + MPU_CLOCK_DIV_LOG2),
+    SYS_CLOCK_KHZ = 160000,
+    CLOCK_OUT_HALF_CYCLES = 10,
+    MPU_E_DIVISOR = 4,
+    MPU_CLOCK_KHZ = SYS_CLOCK_KHZ / (2 * CLOCK_OUT_HALF_CYCLES * MPU_E_DIVISOR),
     MEMORY_SIZE = 64 * 1024,
-    RAM_SIZE = 32 * 1024,
-    ROM_SIZE = 16 * 1024,
-    MPU_ROM_BASE = 0xc000,
-    ACIA_STATUS_ADDR = 0x8000,
-    ACIA_DATA_ADDR = 0x8001,
-    UNMAPPED_BASE = 0x8002,
-    UNMAPPED_END = 0xbfff,
+    RAM_SIZE = 56 * 1024,
+    IO_SIZE = 4 * 1024,
+    ROM_SIZE = 4 * 1024,
+    MPU_IO_BASE = 0xe000,
+    MPU_IO_END = MPU_IO_BASE + IO_SIZE - 1,
+    MPU_ROM_BASE = 0xf000,
+    ACIA_STATUS_ADDR = MPU_IO_BASE,
+    ACIA_DATA_ADDR = MPU_IO_BASE + 1,
 };
 
 enum {
@@ -56,7 +58,7 @@ enum {
 };
 
 static uint8_t memory[MEMORY_SIZE] __attribute__((section(".data.memory_image"), aligned(4), used)) = {
-    [UNMAPPED_BASE ... UNMAPPED_END] = 0xff,
+    [MPU_IO_BASE ... MPU_IO_END] = 0xff,
     [MPU_ROM_BASE] =
 #include "rom_image.h"
 };
@@ -115,7 +117,7 @@ static void usb_put_uint_raw(uint32_t value) {
 }
 
 static void usb_write_banner(void) {
-    usb_puts_raw("\nPico 6802 ");
+    usb_puts_raw("\n\nPico 6802 ");
     usb_put_uint_raw(MPU_CLOCK_KHZ);
     usb_puts_raw(" kHz\n\n");
 }
@@ -151,6 +153,10 @@ static void init_gpio(void) {
     gpio_init(PIN_RESET_N);
     gpio_put(PIN_RESET_N, false);
     gpio_set_dir(PIN_RESET_N, GPIO_OUT);
+
+    gpio_init(PIN_MR);
+    gpio_put(PIN_MR, true);
+    gpio_set_dir(PIN_MR, GPIO_OUT);
 
     for (uint pin = PIN_ADDR_BASE; pin < PIN_ADDR_BASE + PIN_ADDR_COUNT; ++pin) {
         gpio_init(pin);
@@ -250,14 +256,11 @@ static void __attribute__((noinline, noreturn)) __not_in_flash_func(bus_service_
                 pins = sio_hw->gpio_in;
             } while (pins & E_MASK);
         } else {
-            uint32_t data_pins;
-
             do {
-                data_pins = pins;
                 pins = sio_hw->gpio_in;
             } while (pins & E_MASK);
 
-            uint8_t value = (uint8_t)(data_pins >> PIN_DATA_BASE);
+            uint8_t value = (uint8_t)(pins >> PIN_DATA_BASE);
 
             if (address < RAM_SIZE) {
                 memory[address] = value;
