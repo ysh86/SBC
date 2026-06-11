@@ -80,10 +80,10 @@ static inline __attribute__((always_inline)) uint8_t acia_read_status(void) {
 }
 
 static inline __attribute__((always_inline)) uint8_t acia_read_data(void) {
-    if (sio_hw->fifo_st & SIO_FIFO_ST_VLD_BITS) {
-        return (uint8_t)sio_hw->fifo_rd;
-    }
-    return 0xffu;
+    // MC6850 software is expected to read data only when RDRF is set. If the
+    // emulated data register is read while empty, the returned value is
+    // intentionally undefined; skipping the VLD check keeps the hot path short.
+    return (uint8_t)sio_hw->fifo_rd;
 }
 
 static inline __attribute__((always_inline)) void acia_write_data(uint8_t value) {
