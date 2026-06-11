@@ -61,8 +61,6 @@ static uint8_t memory[MEMORY_SIZE] __attribute__((section(".data.memory_image"),
 #include "rom_image.h"
 };
 
-static volatile bool usb_core_ready;
-
 static PIO bus_pio = pio0;
 static uint data_value_sm = 0;
 static uint data_dir_lo_sm = 1;
@@ -122,11 +120,10 @@ static void usb_write_banner(void) {
     usb_puts_raw(" kHz\n\n");
 }
 
-static void __not_in_flash_func(usb_core_entry)(void) {
-    (void)stdio_usb_init();
+static void __not_in_flash_func(usb_service_loop)(void) {
     drain_core_fifo();
-    usb_core_ready = true;
 
+    sleep_ms(1000);
     if (stdio_usb_connected()) {
         usb_write_banner();
     }
@@ -271,23 +268,24 @@ static void __attribute__((noinline, noreturn)) __not_in_flash_func(bus_service_
     }
 }
 
+static void __attribute__((noreturn)) __not_in_flash_func(bus_core_entry)(void) {
+    uint32_t irq_state = save_and_disable_interrupts();
+    (void)irq_state;
+
+    sio_hw->gpio_set = 1u << PIN_RESET_N;
+    bus_service_loop();
+}
+
 int main(void) {
     set_sys_clock_khz(SYS_CLOCK_KHZ, true);
 
     init_gpio();
     init_data_bus_pio(bus_pio, data_value_sm, data_dir_lo_sm, data_dir_hi_sm);
     init_clock_pio(bus_pio, clock_sm);
-
-    multicore_launch_core1(usb_core_entry);
-    while (!usb_core_ready) {
-        tight_loop_contents();
-    }
+    (void)stdio_usb_init();
 
     sleep_ms(10);
 
-    uint32_t irq_state = save_and_disable_interrupts();
-    (void)irq_state;
-
-    gpio_put(PIN_RESET_N, true);
-    bus_service_loop();
+    multicore_launch_core1(bus_core_entry);
+    usb_service_loop();
 }
