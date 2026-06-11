@@ -1,19 +1,25 @@
 .program data_bus_read
-; The first FIFO word primes Y with the data GPIO direction mask, normally
-; 0xff. After that, CPU writes one low-byte data value to the TX FIFO for
-; each MPU read cycle.
-;
-; The data GPIOs are configured as OUT pins. After E falls, the state
-; machine consumes zero bits left in OSR and releases GPIO16-23 to input/Hi-Z.
-    pull block
-    out y, 8
+; Value output SM. CPU pushes one low-byte value per MPU read cycle.
+; Autopull makes this a one-instruction loop; the OUT stalls while TX FIFO is empty.
 .wrap_target
-    pull block
     out pins, 8
-    mov osr, y        ; Pico 2 PIO v1: omit this line
-    out pindirs, 8    ; Pico 2 PIO v1: replace this with "mov pindirs, y"
+.wrap
+
+.program data_bus_dir4
+; Direction SM. Use two instances: one for GPIO16-19 and one for GPIO20-23.
+; It watches E/RW/VMA directly. On E high, if RW and VMA are both high,
+; it drives its 4-bit data nibble until E falls, then releases it to Hi-Z.
+    set y, 3
+.wrap_target
+    wait 1 gpio 24
+    mov isr, null
+    in pins, 2
+    mov x, isr
+    jmp x!=y wait_low
+    set pindirs, 0xf
+wait_low:
     wait 0 gpio 24
-    out pindirs, 8    ; Pico 2 PIO v1: replace this with "mov pindirs, null"
+    set pindirs, 0x0
 .wrap
 
 .program clock_8mhz

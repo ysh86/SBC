@@ -64,7 +64,10 @@ static uint8_t memory[MEMORY_SIZE] __attribute__((section(".data.memory_image"),
 static volatile bool usb_core_ready;
 
 static PIO bus_pio = pio0;
-static uint data_sm = 0;
+static uint data_value_sm = 0;
+static uint data_dir_lo_sm = 1;
+static uint data_dir_hi_sm = 2;
+static uint clock_sm = 3;
 
 static inline __attribute__((always_inline)) void drain_core_fifo(void) {
     while (sio_hw->fifo_st & SIO_FIFO_ST_VLD_BITS) {
@@ -90,7 +93,7 @@ static inline __attribute__((always_inline)) void acia_write_data(uint8_t value)
 }
 
 static inline __attribute__((always_inline)) void drive_data_bus_for_read(uint8_t value) {
-    bus_pio->txf[data_sm] = value;
+    bus_pio->txf[data_value_sm] = value;
 }
 
 static void usb_puts_raw(const char *text) {
@@ -171,12 +174,13 @@ static void init_gpio(void) {
     gpio_disable_pulls(PIN_VMA);
 }
 
-static void init_data_bus_pio(PIO pio, uint sm) {
-    uint offset = pio_add_program(pio, &data_bus_read_program);
-    pio_sm_config config = data_bus_read_program_get_default_config(offset);
+static void init_data_bus_pio(PIO pio, uint value_sm, uint dir_lo_sm, uint dir_hi_sm) {
+    uint value_offset = pio_add_program(pio, &data_bus_read_program);
+    uint dir_offset = pio_add_program(pio, &data_bus_dir4_program);
 
-    sm_config_set_out_pins(&config, PIN_DATA_BASE, PIN_DATA_COUNT);
-    sm_config_set_out_shift(&config, true, false, 32);
+    pio_sm_config value_config = data_bus_read_program_get_default_config(value_offset);
+    sm_config_set_out_pins(&value_config, PIN_DATA_BASE, PIN_DATA_COUNT);
+    sm_config_set_out_shift(&value_config, true, true, 8);
 
     for (uint pin = PIN_DATA_BASE; pin < PIN_DATA_BASE + PIN_DATA_COUNT; ++pin) {
         pio_gpio_init(pio, pin);
@@ -184,11 +188,29 @@ static void init_data_bus_pio(PIO pio, uint sm) {
         gpio_set_input_enabled(pin, true);
     }
 
-    pio_sm_set_consecutive_pindirs(pio, sm, PIN_DATA_BASE, PIN_DATA_COUNT, false);
-    pio_sm_clear_fifos(pio, sm);
-    pio_sm_init(pio, sm, offset, &config);
-    pio->txf[sm] = 0xffu;
-    pio_sm_set_enabled(pio, sm, true);
+    pio_sm_set_consecutive_pindirs(pio, value_sm, PIN_DATA_BASE, PIN_DATA_COUNT, false);
+    pio_sm_clear_fifos(pio, value_sm);
+    pio_sm_init(pio, value_sm, value_offset, &value_config);
+
+    pio_sm_config dir_lo_config = data_bus_dir4_program_get_default_config(dir_offset);
+    sm_config_set_set_pins(&dir_lo_config, PIN_DATA_BASE, 4);
+    sm_config_set_in_pins(&dir_lo_config, PIN_RW);
+    sm_config_set_in_shift(&dir_lo_config, false, false, 32);
+    pio_sm_set_consecutive_pindirs(pio, dir_lo_sm, PIN_DATA_BASE, 4, false);
+    pio_sm_clear_fifos(pio, dir_lo_sm);
+    pio_sm_init(pio, dir_lo_sm, dir_offset, &dir_lo_config);
+
+    pio_sm_config dir_hi_config = data_bus_dir4_program_get_default_config(dir_offset);
+    sm_config_set_set_pins(&dir_hi_config, PIN_DATA_BASE + 4, 4);
+    sm_config_set_in_pins(&dir_hi_config, PIN_RW);
+    sm_config_set_in_shift(&dir_hi_config, false, false, 32);
+    pio_sm_set_consecutive_pindirs(pio, dir_hi_sm, PIN_DATA_BASE + 4, 4, false);
+    pio_sm_clear_fifos(pio, dir_hi_sm);
+    pio_sm_init(pio, dir_hi_sm, dir_offset, &dir_hi_config);
+
+    pio_sm_set_enabled(pio, value_sm, true);
+    pio_sm_set_enabled(pio, dir_lo_sm, true);
+    pio_sm_set_enabled(pio, dir_hi_sm, true);
 }
 
 static void init_clock_pio(PIO pio, uint sm) {
@@ -253,8 +275,8 @@ int main(void) {
     set_sys_clock_khz(SYS_CLOCK_KHZ, true);
 
     init_gpio();
-    init_data_bus_pio(bus_pio, data_sm);
-    init_clock_pio(bus_pio, 1);
+    init_data_bus_pio(bus_pio, data_value_sm, data_dir_lo_sm, data_dir_hi_sm);
+    init_clock_pio(bus_pio, clock_sm);
 
     multicore_launch_core1(usb_core_entry);
     while (!usb_core_ready) {
