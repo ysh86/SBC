@@ -23,9 +23,9 @@ wait_low:
 .wrap
 
 .program clock_mpu
-; Run this state machine at 157.5 MHz with clkdiv 2.0.
-; Each half-period is 22 PIO instructions, yielding about 1.789 MHz.
+; Run this state machine at 295.2 MHz with clkdiv 3 + 44/256.
+; Each half-period is 26 PIO instructions, yielding about 1.789 MHz.
 .wrap_target
-    set pins, 1 [21]
-    set pins, 0 [21]
+    set pins, 1 [25]
+    set pins, 0 [25]
 .wrap

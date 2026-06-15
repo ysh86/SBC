@@ -7,6 +7,7 @@
 #include "hardware/regs/sio.h"
 #include "hardware/structs/sio.h"
 #include "hardware/sync.h"
+#include "hardware/vreg.h"
 #include "pico/multicore.h"
 #include "pico/stdio_usb.h"
 #include "pico/stdlib.h"
@@ -27,10 +28,12 @@ enum {
 };
 
 enum {
-    SYS_CLOCK_KHZ = 157500,
-    CLOCK_OUT_HALF_CYCLES = 22,
-    CLOCK_OUT_CLKDIV = 2,
-    MPU_CLOCK_KHZ = SYS_CLOCK_KHZ / (2 * CLOCK_OUT_HALF_CYCLES * CLOCK_OUT_CLKDIV),
+    SYS_CLOCK_KHZ = 295200,
+    CLOCK_OUT_HALF_CYCLES = 26,
+    CLOCK_OUT_CLKDIV_INT = 3,
+    CLOCK_OUT_CLKDIV_FRAC8 = 44,
+    CLOCK_OUT_CLKDIV_256 = CLOCK_OUT_CLKDIV_INT * 256 + CLOCK_OUT_CLKDIV_FRAC8,
+    MPU_CLOCK_KHZ = (SYS_CLOCK_KHZ * 256) / (2 * CLOCK_OUT_HALF_CYCLES * CLOCK_OUT_CLKDIV_256),
     MEMORY_SIZE = 64 * 1024,
     RAM_SIZE = 8 * 1024,
     ROM_SIZE = 32 * 1024,
@@ -222,7 +225,7 @@ static void init_clock_pio(PIO pio, uint sm) {
     pio_sm_config config = clock_mpu_program_get_default_config(offset);
 
     sm_config_set_set_pins(&config, PIN_CLK_OUT, 1);
-    sm_config_set_clkdiv(&config, (float)CLOCK_OUT_CLKDIV);
+    sm_config_set_clkdiv_int_frac(&config, CLOCK_OUT_CLKDIV_INT, CLOCK_OUT_CLKDIV_FRAC8);
 
     pio_gpio_init(pio, PIN_CLK_OUT);
     pio_sm_set_consecutive_pindirs(pio, sm, PIN_CLK_OUT, 1, true);
@@ -283,6 +286,8 @@ static void __attribute__((noreturn)) __not_in_flash_func(bus_core_entry)(void) 
 }
 
 int main(void) {
+    vreg_set_voltage(VREG_VOLTAGE_1_30);
+    sleep_ms(10);
     set_sys_clock_khz(SYS_CLOCK_KHZ, true);
 
     init_gpio();

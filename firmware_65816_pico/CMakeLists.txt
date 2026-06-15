@@ -34,6 +34,7 @@ target_link_libraries(pico_mpu_65816 PRIVATE
     pico_multicore
     hardware_clocks
     hardware_pio
+    hardware_vreg
 )
 
 pico_enable_stdio_usb(pico_mpu_65816 1)
