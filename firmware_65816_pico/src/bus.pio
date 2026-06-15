@@ -1,0 +1,31 @@
+.program data_bus_read
+; Value output SM. CPU pushes one low-byte value per MPU read cycle.
+; Autopull makes this a one-instruction loop; the OUT stalls while TX FIFO is empty.
+.wrap_target
+    out pins, 8
+.wrap
+
+.program data_bus_dir4
+; Direction SM. Use two instances: one for GPIO16-19 and one for GPIO20-23.
+; It watches CLK/RWB directly. On CLK high, if RWB is high, it drives
+; its 4-bit data nibble until CLK falls, then releases it to Hi-Z.
+    set y, 1
+.wrap_target
+    wait 1 gpio 29
+    mov isr, null
+    in pins, 1
+    mov x, isr
+    jmp x!=y wait_low
+    set pindirs, 0xf
+wait_low:
+    wait 0 gpio 29
+    set pindirs, 0x0
+.wrap
+
+.program clock_mpu
+; Run this state machine at 157.5 MHz with clkdiv 2.0.
+; Each half-period is 22 PIO instructions, yielding about 1.789 MHz.
+.wrap_target
+    set pins, 1 [21]
+    set pins, 0 [21]
+.wrap

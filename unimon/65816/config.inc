@@ -7,8 +7,8 @@
 ;;; Memory
 ;;;
 
-ROM_B:	EQU	$0600
-ENTRY:	EQU	$0F80		; Entry point
+ROM_B:	EQU	$F600
+ENTRY:	EQU	$FF80		; Entry point
 
 WORK_B:	EQU	$0000		; Must fit in ZERO page
 STACK:	EQU	$01FF
@@ -44,8 +44,8 @@ ACCM_V:	EQU	$0B		; Command: No-parity
 USE_DEV_6850 = 1
 	IF USE_DEV_6850
 	;;
-ACIAC:	EQU	$4018		; Control / Status Register
-ACIAD:	EQU	$4019		; Data Register
+ACIAC:	EQU	$3000		; Control / Status Register
+ACIAD:	EQU	$3001		; Data Register
 	ENDIF
 
 ;;;
