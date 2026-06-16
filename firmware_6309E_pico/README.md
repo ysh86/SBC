@@ -19,27 +19,24 @@ Standard Pico boards do not bring every GPIO in this table out as a normal heade
 
 ## Memory map
 
-現状は 6802 版から維持しています。
-
 | MPU address | Function |
 | --- | --- |
-| `$0000-$dfff` | 56KB RAM, zero-filled |
+| `$0000-$dfff` | RAM |
 | `$e000` | 6850-like status register, writes ignored |
 | `$e001` | 6850-like data register |
-| `$e002-$efff` | I/O window, reads return `$ff`, writes ignored |
+| `$e002-$efff` | RAM |
 | `$f000-$ffff` | 4KB ROM |
 
-The MPU-visible memory image is one 64KB SRAM-resident initialized array. RAM starts zeroed, the `$e000-$efff` I/O window is initialized to `$ff`, and `rom_image.h` is inserted at `$f000`:
+The MPU-visible memory image is one 64KB SRAM-resident initialized array. `rom_image.h` is inserted at `$c000`, so it supplies the initial contents for `$c000-$ffff`. The bus loop still treats `$0000-$efff` as RAM, except for the two I/O registers at `$e000-$e001`; `$f000-$ffff` is read-only ROM.
 
 ```c
 static uint8_t memory[64 * 1024] __attribute__((section(".data.memory_image"), aligned(4), used)) = {
-    [0xe000 ... 0xefff] = 0xff,
-    [0xf000] =
+    [0xc000] =
 #include "rom_image.h"
 };
 ```
 
-Replace `src/rom_image.h` with 4KB of comma-separated hex bytes. Offset `$0000` in that file maps to MPU address `$f000`. The included placeholder image is `JMP $F000` plus reset vector `$F000`.
+Replace `src/rom_image.h` with 16KB of comma-separated hex bytes. Offset `$0000` in that file maps to MPU address `$c000`, and offset `$3000` maps to MPU address `$f000`.
 
 ## UART status bits
 
