@@ -286,7 +286,7 @@ static void __attribute__((noreturn)) __not_in_flash_func(bus_core_entry)(void) 
 }
 
 int main(void) {
-    vreg_set_voltage(VREG_VOLTAGE_1_30);
+    vreg_set_voltage(VREG_VOLTAGE_1_25);
     sleep_ms(10);
     set_sys_clock_khz(SYS_CLOCK_KHZ, true);
 
