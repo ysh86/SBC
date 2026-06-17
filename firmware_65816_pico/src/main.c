@@ -28,10 +28,10 @@ enum {
 };
 
 enum {
-    SYS_CLOCK_KHZ = 295200,
-    CLOCK_OUT_HALF_CYCLES = 26,
-    CLOCK_OUT_CLKDIV_INT = 3,
-    CLOCK_OUT_CLKDIV_FRAC8 = 44,
+    SYS_CLOCK_KHZ = 157500,
+    CLOCK_OUT_HALF_CYCLES = 44,
+    CLOCK_OUT_CLKDIV_INT = 1,
+    CLOCK_OUT_CLKDIV_FRAC8 = 0,
     CLOCK_OUT_CLKDIV_256 = CLOCK_OUT_CLKDIV_INT * 256 + CLOCK_OUT_CLKDIV_FRAC8,
     MPU_CLOCK_KHZ = (SYS_CLOCK_KHZ * 256) / (2 * CLOCK_OUT_HALF_CYCLES * CLOCK_OUT_CLKDIV_256),
     MEMORY_SIZE = 64 * 1024,
@@ -260,11 +260,14 @@ static void __attribute__((noinline, noreturn)) __not_in_flash_func(bus_service_
                 pins = sio_hw->gpio_in;
             } while (pins & CLK_OUT_MASK);
         } else {
+            uint32_t data_pins;
+
             do {
+                data_pins = pins;
                 pins = sio_hw->gpio_in;
             } while (pins & CLK_OUT_MASK);
 
-            uint8_t value = (uint8_t)(pins >> PIN_DATA_BASE);
+            uint8_t value = (uint8_t)(data_pins >> PIN_DATA_BASE);
 
             if (address < RAM_SIZE) {
                 memory[address] = value;
@@ -286,7 +289,7 @@ static void __attribute__((noreturn)) __not_in_flash_func(bus_core_entry)(void) 
 }
 
 int main(void) {
-    vreg_set_voltage(VREG_VOLTAGE_1_25);
+    vreg_set_voltage(VREG_VOLTAGE_DEFAULT);
     sleep_ms(10);
     set_sys_clock_khz(SYS_CLOCK_KHZ, true);
 
