@@ -14,6 +14,8 @@
 
 #include "bus.pio.h"
 
+#define OVERCLOCK 0
+
 enum {
     PIN_ADDR_BASE = 0,
     PIN_ADDR_COUNT = 16,
@@ -28,10 +30,17 @@ enum {
 };
 
 enum {
+#if OVERCLOCK
+    SYS_CLOCK_KHZ = 295200,
+    CLOCK_OUT_HALF_CYCLES = 13,
+    CLOCK_OUT_CLKDIV_INT = 3,
+    CLOCK_OUT_CLKDIV_FRAC8 = 44,
+#else
     SYS_CLOCK_KHZ = 157500,
     CLOCK_OUT_HALF_CYCLES = 44,
     CLOCK_OUT_CLKDIV_INT = 1,
     CLOCK_OUT_CLKDIV_FRAC8 = 0,
+#endif
     CLOCK_OUT_CLKDIV_256 = CLOCK_OUT_CLKDIV_INT * 256 + CLOCK_OUT_CLKDIV_FRAC8,
     MPU_CLOCK_KHZ = (SYS_CLOCK_KHZ * 256) / (2 * CLOCK_OUT_HALF_CYCLES * CLOCK_OUT_CLKDIV_256),
     MEMORY_SIZE = 64 * 1024,
@@ -221,8 +230,13 @@ static void init_data_bus_pio(PIO pio, uint value_sm, uint dir_lo_sm, uint dir_h
 }
 
 static void init_clock_pio(PIO pio, uint sm) {
+#if OVERCLOCK
+    uint offset = pio_add_program(pio, &clock_mpu_overclock_program);
+    pio_sm_config config = clock_mpu_overclock_program_get_default_config(offset);
+#else
     uint offset = pio_add_program(pio, &clock_mpu_program);
     pio_sm_config config = clock_mpu_program_get_default_config(offset);
+#endif
 
     sm_config_set_set_pins(&config, PIN_CLK_OUT, 1);
     sm_config_set_clkdiv_int_frac(&config, CLOCK_OUT_CLKDIV_INT, CLOCK_OUT_CLKDIV_FRAC8);
@@ -289,7 +303,11 @@ static void __attribute__((noreturn)) __not_in_flash_func(bus_core_entry)(void) 
 }
 
 int main(void) {
+#if OVERCLOCK
+    vreg_set_voltage(VREG_VOLTAGE_1_30);
+#else
     vreg_set_voltage(VREG_VOLTAGE_DEFAULT);
+#endif
     sleep_ms(10);
     set_sys_clock_khz(SYS_CLOCK_KHZ, true);
 

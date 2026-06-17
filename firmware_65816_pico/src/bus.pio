@@ -8,7 +8,8 @@
 .program data_bus_dir4
 ; Direction SM. Use two instances: one for GPIO16-19 and one for GPIO20-23.
 ; It watches CLK/RWB directly. On CLK high, if RWB is high, it drives
-; its 4-bit data nibble until CLK falls, holds it for at least 40 ns,
+; its 4-bit data nibble until CLK falls, holds it for at least 40 ns
+; (about 44 ns) at 157.5 MHz or about 24 ns at 295.2 MHz,
 ; then releases it to Hi-Z.
     set y, 1
 .wrap_target
@@ -32,4 +33,12 @@ wait_low:
     nop [21]
     set pins, 0 [21]
     nop [21]
+.wrap
+
+.program clock_mpu_overclock
+; Run this state machine at 295.2 MHz with clkdiv 3 + 44/256.
+; Each half-period is 13 PIO instructions, yielding about 3.579 MHz.
+.wrap_target
+    set pins, 1 [12]
+    set pins, 0 [12]
 .wrap
