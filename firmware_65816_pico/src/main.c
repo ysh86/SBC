@@ -47,17 +47,18 @@ enum {
     RAM_SIZE = 8 * 1024,
     ROM_SIZE = 32 * 1024,
     MPU_RAM2_BASE = 0x6000,
-    MPU_IO_BASE = 0x3000,
     MPU_ROM_BASE = 0x8000,
-    ACIA_STATUS_ADDR = MPU_IO_BASE,
-    ACIA_DATA_ADDR = MPU_IO_BASE + 1,
+    MPU_IO_BASE = 0x4000,
+    ACIA_STATUS_ADDR = MPU_IO_BASE + 0x18,
+    ACIA_DATA_ADDR = MPU_IO_BASE + 0x19,
 };
 
 enum {
     ADDRESS_MASK = 0x0000ffffu,
     DATA_MASK = 0x00ff0000u,
-    CLK_OUT_MASK = 1u << PIN_CLK_OUT,
+    RESET_N_MASK = 1u << PIN_RESET_N,
     RW_MASK = 1u << PIN_RW,
+    CLK_OUT_MASK = 1u << PIN_CLK_OUT,
 };
 
 enum {
@@ -141,6 +142,8 @@ static void __not_in_flash_func(usb_service_loop)(void) {
     if (stdio_usb_connected()) {
         usb_write_banner();
     }
+
+    sio_hw->gpio_set = RESET_N_MASK;
 
     for (;;) {
         bool connected = stdio_usb_connected();
@@ -248,6 +251,11 @@ static void init_clock_pio(PIO pio, uint sm) {
 }
 
 static void __attribute__((noinline, noreturn)) __not_in_flash_func(bus_service_loop)(void) {
+    // Wait until RESET_N is released.
+    while ((sio_hw->gpio_in & RESET_N_MASK) == 0u) {
+        tight_loop_contents();
+    }
+
     for (;;) {
         uint32_t pins;
 
@@ -298,7 +306,6 @@ static void __attribute__((noreturn)) __not_in_flash_func(bus_core_entry)(void) 
     uint32_t irq_state = save_and_disable_interrupts();
     (void)irq_state;
 
-    sio_hw->gpio_set = 1u << PIN_RESET_N;
     bus_service_loop();
 }
 

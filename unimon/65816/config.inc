@@ -44,8 +44,8 @@ ACCM_V:	EQU	$0B		; Command: No-parity
 USE_DEV_6850 = 1
 	IF USE_DEV_6850
 	;;
-ACIAC:	EQU	$3000		; Control / Status Register
-ACIAD:	EQU	$3001		; Data Register
+ACIAC:	EQU	$4018		; Control / Status Register
+ACIAD:	EQU	$4019		; Data Register
 	ENDIF
 
 ;;;
