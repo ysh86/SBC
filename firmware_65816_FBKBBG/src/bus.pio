@@ -9,7 +9,7 @@
 ; Direction SM. Use two instances: one for GPIO16-19 and one for GPIO20-23.
 ; It watches CLK/RWB directly. On CLK high, if RWB is high, it drives
 ; its 4-bit data nibble until CLK falls, holds it for at least 40 ns
-; (about 44 ns), then releases it to Hi-Z.
+; (10 PIO cycles, about 43.1 ns), then releases it to Hi-Z.
     set y, 1
 .wrap_target
     wait 1 gpio 29
@@ -20,13 +20,13 @@
     set pindirs, 0xf
 wait_low:
     wait 0 gpio 29
-    nop [6]
+    nop [9]
     set pindirs, 0x0
 .wrap
 
 .program clock_mpu
-; Run this state machine at 157.5 MHz with clkdiv 1.
-; Each half-period is at least 44 PIO cycles, yielding about 1.789 MHz
+; Run this state machine from clk_sys = 232 MHz with clkdiv 1 + 232/256.
+; Each half-period is at least 34 PIO cycles, yielding about 1.78977 MHz
 ; with a 50% duty cycle. Bits 0-29 contain the GPIO snapshot.
 ; Bits 31:30 are 00 for the snapshot taken after CLK rises and 01
 ; for the snapshot taken immediately before CLK falls. NEG requires left-shift IN.
@@ -36,8 +36,7 @@ wait_low:
     set pins, 1
     mov isr, pins
     push block
-    nop [31]
-    nop [3]
+    nop [25]
     pull block
     set x, 1
     mov isr, x
@@ -45,6 +44,5 @@ wait_low:
     push block
     set pins, 0
     nop [31]
-    nop [9]
     pull block
 .wrap

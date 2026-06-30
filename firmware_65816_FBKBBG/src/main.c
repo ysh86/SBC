@@ -14,6 +14,11 @@
 
 #include "bus.pio.h"
 
+#include "fbkb.h"
+#include "ppu.h"
+
+#define USE_FB_KB 1
+
 enum {
     PIN_ADDR_BASE = 0,
     PIN_ADDR_COUNT = 16,
@@ -28,10 +33,10 @@ enum {
 };
 
 enum {
-    SYS_CLOCK_KHZ = 157500,
-    CLOCK_OUT_HALF_CYCLES = 44,
+    SYS_CLOCK_KHZ = 232000,
+    CLOCK_OUT_HALF_CYCLES = 34,
     CLOCK_OUT_CLKDIV_INT = 1,
-    CLOCK_OUT_CLKDIV_FRAC8 = 0,
+    CLOCK_OUT_CLKDIV_FRAC8 = 232,
     CLOCK_OUT_CLKDIV_256 = CLOCK_OUT_CLKDIV_INT * 256 + CLOCK_OUT_CLKDIV_FRAC8,
     MPU_CLOCK_KHZ = (SYS_CLOCK_KHZ * 256) / (2 * CLOCK_OUT_HALF_CYCLES * CLOCK_OUT_CLKDIV_256),
     MEMORY_SIZE = 64 * 1024,
@@ -40,6 +45,8 @@ enum {
     MPU_RAM2_BASE = 0x6000,
     MPU_ROM_BASE = 0x8000,
     MPU_IO_BASE = 0x4000,
+    FBKB_PORT_4016_ADDR = MPU_IO_BASE + 0x16,
+    FBKB_PORT_4017_ADDR = MPU_IO_BASE + 0x17,
     ACIA_STATUS_ADDR = MPU_IO_BASE + 0x18,
     ACIA_DATA_ADDR = MPU_IO_BASE + 0x19,
 };
@@ -63,53 +70,7 @@ enum {
 enum {
     VSYNC_PERIOD_CYCLES = 29780,
     VBLANK_BEGIN_CYCLE = VSYNC_PERIOD_CYCLES - (340 * 21 / 3),
-    PPU_VRAM_SIZE = 16 * 1024,
-    PPU_VRAM_MASK = PPU_VRAM_SIZE - 1,
-    PPU_ADDRESS_MASK = 0x3fff,
-    PPU_VRAM_BG = 0x2000,
-    PPU_NMI_BIT = 0x80u,
-    PPU_VBLANK_BIT = 0x80u,
-    PPU_INC32_BIT = 0x04u,
-    PPU_SHOW_BG_BIT = 0x08u,
-    PPU_REGISTER_BASE = 0x2000,
-    PPU_REGISTER_RANGE_MASK = 0xe000,
-    PPU_REGISTER_COUNT = 8,
     IS_COMMAND_MASK = 0xf0000000u,
-    PPU_VBLANK_BEGIN_COMMAND = 0x10000000u,
-    PPU_VBLANK_END_COMMAND = 0x20000000u,
-    PPU_WRITE_COMMAND = 0x40000000u,
-    PPU_READ_COMMAND = 0x80000000u,
-    PPU_COMMAND_INDEX_SHIFT = 8,
-    PPU_COMMAND_INDEX_MASK = PPU_REGISTER_COUNT - 1,
-    PPU_REG_PPUCTRL = 0,
-    PPU_REG_PPUMASK = 1,
-    PPU_REG_PPUSTATUS = 2,
-    PPU_REG_OAMADDR = 3,
-    PPU_REG_OAMDATA = 4,
-    PPU_REG_PPUSCROLL = 5,
-    PPU_REG_PPUADDR = 6,
-    PPU_REG_PPUDATA = 7,
-    PPU_SCROLL_X = 0,
-    PPU_SCROLL_Y = 1,
-    PPU_ADDR_H = 0,
-    PPU_ADDR_L = 1,
-};
-
-typedef struct {
-    uint8_t vram[PPU_VRAM_SIZE];
-    uint8_t registers[PPU_REGISTER_COUNT];
-    uint8_t scroll[2];
-    uint8_t addr[2];
-    bool write_latch;
-} Ppu;
-
-static volatile Ppu ppu = {
-    .vram = { [0 ... (PPU_VRAM_SIZE / 2) - 1] = 0xff },
-};
-
-static const uint8_t ppu_addr_masks[2] = {
-    [PPU_ADDR_H] = (uint8_t)(PPU_ADDRESS_MASK >> 8),
-    [PPU_ADDR_L] = 0xff,
 };
 
 static uint8_t memory[MEMORY_SIZE] __attribute__((section(".data.memory_image"), aligned(4), used)) = {
@@ -120,7 +81,7 @@ static uint8_t memory[MEMORY_SIZE] __attribute__((section(".data.memory_image"),
     [0x1000 ... RAM_SIZE - 1] = 0x00,
     [0x4000 ... 0x4fff] = 0x00,
     [MPU_RAM2_BASE ... MPU_RAM2_BASE + RAM_SIZE - 1] = 0x00,
-#if 1
+#if USE_FB_KB
     [MPU_ROM_BASE] =
 #include "rom_image.h"
 #else
@@ -173,94 +134,8 @@ static inline __attribute__((always_inline)) void acia_write_data(uint32_t value
     core_command_send(value);
 }
 
-static inline __attribute__((always_inline)) void ppu_send_command(uint32_t command) {
-    core_command_send(command);
-}
-
-static inline __attribute__((always_inline)) void ppu_send_read(uint8_t index) {
-    ppu_send_command(PPU_READ_COMMAND | ((uint32_t)index << PPU_COMMAND_INDEX_SHIFT));
-}
-
-static inline __attribute__((always_inline)) void ppu_send_write(uint8_t index, uint8_t value) {
-    ppu_send_command(PPU_WRITE_COMMAND | ((uint32_t)index << PPU_COMMAND_INDEX_SHIFT) | value);
-}
-
 static inline __attribute__((always_inline)) void drive_data_bus_for_read(uint8_t value) {
     bus_pio->txf[data_value_sm] = value;
-}
-
-static inline __attribute__((always_inline)) uint16_t ppu_vram_addr(void) {
-    return ((uint16_t)ppu.addr[PPU_ADDR_H] << 8) | ppu.addr[PPU_ADDR_L];
-}
-
-static inline __attribute__((always_inline)) void ppu_set_vram_addr(uint16_t address) {
-    address &= PPU_ADDRESS_MASK;
-    ppu.addr[PPU_ADDR_L] = (uint8_t)address;
-    ppu.addr[PPU_ADDR_H] = (uint8_t)(address >> 8);
-}
-
-static inline __attribute__((always_inline)) void ppu_update_nmi_output(void) {
-    if ((ppu.registers[PPU_REG_PPUSTATUS] & PPU_VBLANK_BIT) != 0u &&
-        (ppu.registers[PPU_REG_PPUCTRL] & PPU_NMI_BIT) != 0u) {
-        sio_hw->gpio_clr = NMI_N_MASK;
-    } else {
-        sio_hw->gpio_set = NMI_N_MASK;
-    }
-}
-
-static inline __attribute__((always_inline)) void ppu_vblank_begin(void) {
-    ppu.registers[PPU_REG_PPUSTATUS] |= PPU_VBLANK_BIT;
-    ppu_update_nmi_output();
-}
-
-static inline __attribute__((always_inline)) void ppu_vblank_end(void) {
-    ppu.registers[PPU_REG_PPUSTATUS] &= (uint8_t)~PPU_VBLANK_BIT;
-    ppu_update_nmi_output();
-}
-
-static inline __attribute__((always_inline)) void ppu_read_register(uint8_t index) {
-    if (index == PPU_REG_PPUDATA) {
-        uint16_t vram_addr = ppu_vram_addr();
-        ppu.registers[PPU_REG_PPUDATA] = ppu.vram[vram_addr & PPU_VRAM_MASK];
-        ppu_set_vram_addr(vram_addr + ((ppu.registers[PPU_REG_PPUCTRL] & PPU_INC32_BIT) ? 32u : 1u));
-    } else if (index == PPU_REG_PPUSTATUS) {
-        ppu.registers[PPU_REG_PPUSTATUS] &= (uint8_t)~PPU_VBLANK_BIT;
-        ppu.write_latch = false;
-    }
-}
-
-static inline __attribute__((always_inline)) void ppu_write_register(uint8_t index, uint8_t value) {
-#if 1
-    ppu.registers[index] = value;
-#else
-    ppu.registers[PPU_REG_PPUDATA] = value;
-#endif
-
-    switch (index) {
-    case PPU_REG_PPUCTRL:
-        ppu_update_nmi_output();
-        break;
-    case PPU_REG_PPUSCROLL: {
-        uint8_t latch = ppu.write_latch;
-        ppu.scroll[latch] = value;
-        ppu.write_latch = !latch;
-        break;
-    }
-    case PPU_REG_PPUADDR: {
-        uint8_t latch = ppu.write_latch;
-        ppu.addr[latch] = value & ppu_addr_masks[latch];
-        ppu.write_latch = !latch;
-        break;
-    }
-    case PPU_REG_PPUDATA: {
-        uint16_t vram_addr = ppu_vram_addr();
-        ppu.vram[vram_addr & PPU_VRAM_MASK] = value;
-        ppu_set_vram_addr(vram_addr + ((ppu.registers[PPU_REG_PPUCTRL] & PPU_INC32_BIT) ? 32u : 1u));
-        break;
-    }
-    default:
-        break;
-    }
 }
 
 static void usb_puts_raw(const char *text) {
@@ -292,21 +167,28 @@ static void usb_put_hex_raw(uint32_t value, uint digits) {
     }
 }
 
-static void draw(void) {
+static void draw(int bg_index) {
     static int view = 0;
 
     if (view == 0) {
+        uint16_t bg_address = (uint16_t)(PPU_VRAM_BG + bg_index * PPU_NAMETABLE_SIZE);
 #if 1
         for (size_t i = 0; i < 0x400; i += 32) {
             for (size_t j = 0; j < 32; ++j) {
-                char c = (ppu.vram[(PPU_VRAM_BG + i + j) & PPU_VRAM_MASK]);
-                if (c >= 0x20 && c < 0x7f) {
-                    putchar_raw(c);
+                char c = (ppu.vram[(bg_address + i + j) & PPU_VRAM_MASK]);
+                if (c == 0xb2) {
+                    putchar_raw('[');
+                } else if (c == 0xb3) {
+                    putchar_raw(']');
                 } else {
-                    if (c < 0x20) {
-                        putchar_raw('.');
+                    if (c >= 0x20 && c < 0x7f) {
+                        putchar_raw(c);
                     } else {
-                        putchar_raw('*');
+                        if (c < 0x20) {
+                            putchar_raw('.');
+                        } else {
+                            putchar_raw('*');
+                        }
                     }
                 }
             }
@@ -331,10 +213,10 @@ static void draw(void) {
         putchar_raw('\n');
 
         for (size_t i = 0; i < 0x200; i += 16) {
-            usb_put_hex_raw((uint32_t)(PPU_VRAM_BG + i), 4);
+            usb_put_hex_raw((uint32_t)(bg_address + i), 4);
             usb_puts_raw(": ");
             for (size_t j = 0; j < 16; ++j) {
-                uint8_t c = ppu.vram[(PPU_VRAM_BG + i + j) & PPU_VRAM_MASK];
+                uint8_t c = ppu.vram[(bg_address + i + j) & PPU_VRAM_MASK];
                 usb_put_hex_raw(c, 2);
                 putchar_raw(' ');
             }
@@ -365,11 +247,13 @@ static void __not_in_flash_func(usb_service_loop)(void) {
     for (;;) {
         bool connected = stdio_usb_connected();
 
+#if !USE_FB_KB
         int ch;
         while (connected && (sio_hw->fifo_st & SIO_FIFO_ST_RDY_BITS) &&
                (ch = getchar_timeout_us(0)) != PICO_ERROR_TIMEOUT) {
             sio_hw->fifo_wr = (uint8_t)ch;
         }
+#endif
 
         if (__atomic_load_n(&core_command_full, __ATOMIC_ACQUIRE) != 0u) {
             uint32_t cmd = core_command_data;
@@ -379,22 +263,32 @@ static void __not_in_flash_func(usb_service_loop)(void) {
                 if (connected) {
                     putchar_raw((char)cmd);
                 }
+#if USE_FB_KB
+            } else if ((cmd & IS_COMMAND_MASK) == FBKB_WRITE_COMMAND) {
+                // FBKB: USB CDC as keyboard
+                fbkb_write_register((uint8_t)(cmd >> FBKB_COMMAND_PORT_SHIFT), (uint8_t)cmd);
             } else if ((cmd & PPU_WRITE_COMMAND) != 0u) {
                 // PPU: write regs
                 uint8_t index = (uint8_t)((cmd >> PPU_COMMAND_INDEX_SHIFT) & PPU_COMMAND_INDEX_MASK);
-                ppu_write_register(index, (uint8_t)cmd);
+                if (ppu_write_register(index, (uint8_t)cmd)) {
+                    sio_hw->gpio_clr = NMI_N_MASK;
+                }
+#endif
             } else if ((cmd & PPU_READ_COMMAND) != 0u) {
                 // PPU: read regs
                 uint8_t index = (uint8_t)((cmd >> PPU_COMMAND_INDEX_SHIFT) & PPU_COMMAND_INDEX_MASK);
                 ppu_read_register(index);
             } else if (cmd == PPU_VBLANK_BEGIN_COMMAND) {
                 // PPU: begin VBlank and assert NMI when enabled.
-                ppu_vblank_begin();
+                if (ppu_vblank_begin()) {
+                    sio_hw->gpio_clr = NMI_N_MASK;
+                }
             } else if (cmd == PPU_VBLANK_END_COMMAND) {
                 // PPU: end VBlank and release NMI.
                 ppu_vblank_end();
+                sio_hw->gpio_set = NMI_N_MASK;
                 if ((ppu.registers[PPU_REG_PPUMASK] & PPU_SHOW_BG_BIT) != 0u) {
-                    draw();
+                    draw(ppu.registers[PPU_REG_PPUCTRL] & PPU_BG_INDEX_MASK);
                 }
             }
 
@@ -529,6 +423,9 @@ static void __attribute__((noinline, noreturn)) __not_in_flash_func(bus_service_
             if ((address & PPU_REGISTER_RANGE_MASK) == PPU_REGISTER_BASE) {
                 ppu_index = address & (PPU_REGISTER_COUNT - 1);
                 value = ppu.registers[ppu_index];
+            } else if (address == FBKB_PORT_4016_ADDR || address == FBKB_PORT_4017_ADDR) {
+                uint8_t fbkb_index = address & 1;
+                value = fbkb.read_data[fbkb_index];
             } else if (address == ACIA_STATUS_ADDR) {
                 value = acia_read_status();
             } else if (address == ACIA_DATA_ADDR) {
@@ -546,7 +443,7 @@ static void __attribute__((noinline, noreturn)) __not_in_flash_func(bus_service_
             // PPU: clock L period
 
             if (ppu_index != 0u) {
-                ppu_send_read(ppu_index);
+                core_command_send(ppu_make_read_command(ppu_index));
             }
         } else {
             enum {
@@ -554,14 +451,19 @@ static void __attribute__((noinline, noreturn)) __not_in_flash_func(bus_service_
                 WRITE_TARGET_MEMORY,
                 WRITE_TARGET_ACIA,
                 WRITE_TARGET_PPU,
+                WRITE_TARGET_FBKB,
             };
 
             uint8_t write_target = WRITE_TARGET_NONE;
             uint8_t ppu_index = 0;
+            uint8_t fbkb_index = 0;
 
             if ((address & PPU_REGISTER_RANGE_MASK) == PPU_REGISTER_BASE) {
                 write_target = WRITE_TARGET_PPU;
                 ppu_index = address & (PPU_REGISTER_COUNT - 1);
+            } else if (address == FBKB_PORT_4016_ADDR || address == FBKB_PORT_4017_ADDR) {
+                write_target = WRITE_TARGET_FBKB;
+                fbkb_index = address & 1;
             } else if (address < RAM_SIZE || (address >= MPU_RAM2_BASE && address < MPU_RAM2_BASE + RAM_SIZE)) {
                 write_target = WRITE_TARGET_MEMORY;
             } else if (address == ACIA_DATA_ADDR) {
@@ -584,7 +486,10 @@ static void __attribute__((noinline, noreturn)) __not_in_flash_func(bus_service_
                 acia_write_data(value);
                 break;
             case WRITE_TARGET_PPU:
-                ppu_send_write(ppu_index, value);
+                core_command_send(ppu_make_write_command(ppu_index, value));
+                break;
+            case WRITE_TARGET_FBKB:
+                core_command_send(fbkb_make_write_command(fbkb_index, value));
                 break;
             default:
                 break;
@@ -616,7 +521,7 @@ static void __attribute__((noreturn)) __not_in_flash_func(bus_core_entry)(void) 
 }
 
 int main(void) {
-    vreg_set_voltage(VREG_VOLTAGE_DEFAULT);
+    vreg_set_voltage(VREG_VOLTAGE_1_15);
     sleep_ms(10);
     set_sys_clock_khz(SYS_CLOCK_KHZ, true);
 
