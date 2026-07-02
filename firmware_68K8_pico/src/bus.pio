@@ -1,0 +1,31 @@
+.program data_bus_read
+; Value output SM. CPU pushes one low-byte value per MPU read cycle.
+; Autopull makes this a one-instruction loop; the OUT stalls while TX FIFO is empty.
+.wrap_target
+    out pins, 8
+.wrap
+
+.program data_bus_dir4
+; Direction SM. Use two instances: one for GPIO16-19 and one for GPIO20-23.
+; It watches /DS on GPIO24 and R/W directly. While /DS is low, if R/W is high, it drives
+; its 4-bit data nibble until /DS rises, then releases it to Hi-Z.
+    set y, 1
+.wrap_target
+    wait 0 gpio 24
+    mov isr, null
+    in pins, 1
+    mov x, isr
+    jmp x!=y wait_low
+    set pindirs, 0xf
+wait_low:
+    wait 1 gpio 24
+    set pindirs, 0x0
+.wrap
+
+.program clock_mpu
+; Run this state machine at 240 MHz. Each half-period is 12 PIO cycles,
+; yielding a 10 MHz MPU clock.
+.wrap_target
+    set pins, 0 [11]
+    set pins, 1 [11]
+.wrap
