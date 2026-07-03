@@ -10,16 +10,16 @@ Raspberry Pi Pico/RP2040 が外付け MC68008 に ROM、RAM、USB CDC UART を�
 | 16-23 | in/out, PIO controlled | D0-D7 |
 | 24 | in | /DS |
 | 25 | in | R/W |
-| 26 | out | High固定（/ASは未使用） |
+| 26 | out | Held high (/AS unused) |
 | 27 | out | /DTACK, held low |
-| 28 | Low出力/Hi-Z入力 | /RESET and /HALT |
+| 28 | Low output/Hi-Z input | /RESET and /HALT |
 | 29 | out, PIO controlled | CLK, 10MHz MPU clock |
 
 Standard Pico boards do not bring every GPIO in this table out as a normal header pin. This pinout is most natural on a bare RP2040 or a board that exposes GPIO24 and GPIO29.
 
-MC68008 の A16 以降は接続しないため、MPU から見えるアドレス空間は 64KB です。
-
 ## Memory map
+
+Because address lines A16 and above are not connected, the MPU-visible address space is 64 KB.
 
 | MPU address | Function |
 | --- | --- |
@@ -28,16 +28,19 @@ MC68008 の A16 以降は接続しないため、MPU から見えるアドレス
 | `$fff1` | 6850-like data register |
 | `$fff2-$ffff` | Reserved I/O, writes ignored |
 
-The MPU-visible memory image is one 64KB SRAM-resident initialized array. `rom_image.h` supplies its initial contents starting at `$0000`, and the I/O area at `$fff0-$ffff` is initialized to `$ff`. The bus loop treats `$0000-$ffef` as writable RAM and reserves `$fff0-$ffff` for I/O.
+The MPU-visible memory image is one 64KB SRAM-resident initialized array. The source image represents `$7_E000-$7_FFFF`; because only A0-A15 are connected, it is placed at `$E000-$FFFF`. Its first 192 bytes are the MC68000 vector table and are also placed at physical reset-vector addresses `$0000-$00BF`. The I/O area at `$FFF0-$FFFF` overrides the corresponding final 16 image bytes and is initialized to `$FF`. The bus loop treats `$0000-$FFEF` as writable RAM and reserves `$FFF0-$FFFF` for I/O.
 
 ```c
 static uint8_t memory[64 * 1024] __attribute__((section(".data.memory_image"), aligned(4), used)) = {
+    [0x0000] =
+#include "rom_vectors.h"
+    [0xe000] =
 #include "rom_image.h"
     , [0xfff0 ... 0xffff] = 0xff,
 };
 ```
 
-Replace `src/rom_image.h` with comma-separated hex bytes. Offset `$0000` in that file maps to MPU address `$0000`; unspecified bytes are initialized to zero.
+`rom_vectors.h` is included by both initializers, so the reset-vector mirror and the vector table at `$E000` have a single declarative source. `rom_image.h` includes those vectors followed by the remaining image bytes. Unspecified bytes are initialized to zero; no startup copy is required.
 
 ## UART status bits
 
@@ -80,12 +83,16 @@ build/pico_mpu_68008.uf2
 
 For timing validation, build with optimization enabled and check CLK, GP24 /DS, R/W, /DTACK, and GPIO16-23 on a logic analyzer. Also confirm that GP26 remains High. The firmware is structured for the requested clock rate, but the final margin depends on the exact board, wiring, level shifting, and MPU timing.
 
-## TODO
+## 実機確認
 
-- 書き込みデータの取得タイミングを確認する。現在のバスループは /DS が High になった後で GPIO16-23 を読み取るため、MC68008 のデータ保持時間で間に合うか実機で確認する。
+### 今行ったこと
+
+- モニタから64KB全域のメモリダンプを複数回実行し、データ化けがないことを確認した。
+- 連続したメモリreadとACIA write（MPUからUSB CDCへの出力）が安定して動作することを確認した。
+
+### 追加でやった方がいいこと
+
+- RAM全域または代表的なアドレスへ複数のテストパターンを書き込み、read-back比較でRAM writeを確認する。
+- USB CDCから文字を入力し、ACIA statusのRDRFとACIA data readを確認する。
+- 現在のバスループは /DS が High になった後でGPIO16-23を読み取るため、ロジックアナライザでRAM write時のデータ保持時間と余裕を確認する。
 - 最短バスサイクルでタイミングの余裕が不足する場合は、常時アサートしている /DTACK をバスサイクルに応じて制御する。
-- /BERR、バス要求、割り込みなどの未使用MPU入力を有効な非アクティブレベルへ固定する。
-- MC68008バスとRP2040の間に適切なレベル変換を入れる。RP2040のGPIO入力は5Vトレラントではない。
-- `rom_image.h` をMC68008のビッグエンディアンのバイト順で用意する。初期SPを `$0000-$0003`、初期PCを `$0004-$0007` に配置し、どちらも実装されたRAM範囲を指すようにする。
-- A16以降を無視することで、64KBのメモリマップがMC68008のアドレス空間全体でミラーされることを許容できるか確認する。
-- GP26はHigh出力固定のため、MPUの出力信号（/ASを含む）へ接続しない。

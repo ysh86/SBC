@@ -53,6 +53,13 @@ enum {
 };
 
 static uint8_t memory[MEMORY_SIZE] __attribute__((section(".data.memory_image"), aligned(4), used)) = {
+    // The MC68008 fetches its reset vectors from physical address $0000.
+    [0x0000] =
+#include "rom_vectors.h"
+
+    // Only A0-A15 are connected, so source image $7_E000-$7_FFFF is
+    // visible to the MPU at $E000-$FFFF (and at every 64 KiB mirror).
+    [0xe000] =
 #include "rom_image.h"
     , [MPU_IO_BASE ... MEMORY_SIZE - 1] = 0xff,
 };
