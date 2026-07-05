@@ -2,12 +2,12 @@ ENTRY(_start)
 
 MEMORY
 {
-    RAM (rwx) : ORIGIN = 0x00000400, LENGTH = 64K - 0x400
+    RAM (rwx) : ORIGIN = _start_addr, LENGTH = 64K - _start_addr
 }
 
 SECTIONS
 {
-    .text 0x00000400 :
+    .text ORIGIN(RAM) :
     {
         KEEP(*(.text.start))
         *(.text*)

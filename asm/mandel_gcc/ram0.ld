@@ -11,10 +11,10 @@ SECTIONS
     {
         LONG(_ssp_top)
         LONG(_start)
-        . = 0x400;
+        . = _start_addr;
     } > RAM
 
-    .text 0x00000400 :
+    .text _start_addr :
     {
         KEEP(*(.text.start))
         *(.text*)

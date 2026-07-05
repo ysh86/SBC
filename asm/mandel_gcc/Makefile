@@ -9,6 +9,9 @@ CPU     = -m68000 -msoft-float
 CFLAGS  = $(CPU) -O2 -ffreestanding -fno-builtin -Wall -Wextra
 LDFLAGS = $(CPU) -nostdlib -T ram.ld \
           -Wl,--build-id=none \
+          -Wl,--no-warn-rwx-segments \
+          -Wl,-z,noexecstack \
+          -Wl,--defsym=_start_addr=$(START_ADDR) \
           -Wl,--defsym=_ssp_top=$(SSP_TOP) \
           -Wl,--defsym=_usp_top=$(USP_TOP)
 
@@ -17,11 +20,16 @@ SSP_TOP ?= 0x7FFF0
 USP_TOP ?= 0x7FF00
 
 OBJS = crt0.o main.o
+SOFTFP_DIR = soft-fp
+SOFTFP_LIB = $(SOFTFP_DIR)/libgcc-soft-float.a
 
 all: prog.bin
 
-prog.elf: $(OBJS) ram.ld
-	$(CC) $(LDFLAGS) $(OBJS) -lgcc -o $@
+prog.elf: $(OBJS) $(SOFTFP_LIB) ram.ld
+	$(CC) $(LDFLAGS) $(OBJS) $(SOFTFP_LIB) -o $@
+
+$(SOFTFP_LIB):
+	$(MAKE) -C $(SOFTFP_DIR)
 
 prog.bin: prog.elf
 	$(OBJCOPY) -O binary $< $@
@@ -34,3 +42,4 @@ disasm: prog.elf
 
 clean:
 	rm -f *.o prog.elf prog.bin
+	$(MAKE) -C $(SOFTFP_DIR) clean
