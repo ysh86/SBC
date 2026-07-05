@@ -3,3 +3,6 @@
 *.mix
 *.hex
 *.srec
+
+mandel
+mandel.s

@@ -1,3 +1,5 @@
+MODE ?= fixed8.8
+
 CROSS   = m68k-linux-gnu
 AS      = $(CROSS)-as
 CC      = $(CROSS)-gcc-14
@@ -19,7 +21,7 @@ START_ADDR ?= 0x400
 SSP_TOP ?= 0x7FFF0
 USP_TOP ?= 0x7FF00
 
-OBJS = crt0.o main.o
+OBJS = crt0.o $(MODE)/main.o
 SOFTFP_DIR = soft-fp
 SOFTFP_LIB = $(SOFTFP_DIR)/libgcc-soft-float.a
 
