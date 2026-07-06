@@ -12,8 +12,8 @@ LIB=/usr/lib
 
 all:	$(EXEC)
 
-$(EXEC):	$(EXEC).o $(LIB)/libc.a $(LIB)/head.o
-	$(LD) -o $(EXEC).ack $(LFLAGS) $(LIB)/head.o $(EXEC).o \
+$(EXEC):	$(EXEC).o $(LIB)/libc.a head.o
+	$(LD) -o $(EXEC).ack $(LFLAGS) head.o $(EXEC).o \
 		$(LIB)/libc.a $(LIB)/end.o
 	$(CV) $(EXEC).ack $(EXEC).mix
 	@rm -f $(EXEC).ack

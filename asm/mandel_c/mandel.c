@@ -1,7 +1,12 @@
 #define SBC 1
+#define PICO 1
 
 #if SBC
+#if PICO
+#define CONOUT 0x7F45EUL
+#else
 #define CONOUT 0x7F46AUL
+#endif
 #define STACKSIZE 256
 
 char stack[STACKSIZE];
@@ -28,7 +33,7 @@ static void myputchar(int c)
 }
 #endif
 
-void main()
+int main()
 {
     int x, y, i;
     float ca, cb, a, b, t;
@@ -56,4 +61,6 @@ x_next:
         }
         myputchar('\n');
     }
+
+    return y;
 }
