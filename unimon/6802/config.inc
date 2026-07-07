@@ -10,8 +10,8 @@
 ROM_B:	equ	$F000		; ROM begin
 ENTRY:	EQU	$FF80		; Entry point
 
-WORK_B:	equ	$DFC0		; WORK area begin
-STACK:	equ	$DFFF		; Stack end
+WORK_B:	equ	$EFC0		; WORK area begin
+STACK:	equ	$EFFF		; Stack end
 
 BUFLEN:	EQU	16		; Buffer length ( 16 or above )
 

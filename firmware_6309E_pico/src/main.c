@@ -42,6 +42,7 @@ enum {
 enum {
     ADDRESS_MASK = 0x0000ffffu,
     DATA_MASK = 0x00ff0000u,
+    RESET_N_MASK = 1u << PIN_RESET_N,
     E_MASK = 1u << PIN_E,
     RW_MASK = 1u << PIN_RW,
 };
@@ -123,6 +124,8 @@ static void __not_in_flash_func(usb_service_loop)(void) {
     if (stdio_usb_connected()) {
         usb_write_banner();
     }
+
+    sio_hw->gpio_set = RESET_N_MASK;
 
     for (;;) {
         bool connected = stdio_usb_connected();
@@ -223,6 +226,11 @@ static void init_clock_pio(PIO pio, uint sm) {
 }
 
 static void __attribute__((noinline, noreturn)) __not_in_flash_func(bus_service_loop)(void) {
+    // Wait until RESET_N is released.
+    while ((sio_hw->gpio_in & RESET_N_MASK) == 0u) {
+        tight_loop_contents();
+    }
+
     for (;;) {
         uint32_t pins;
 
@@ -268,7 +276,6 @@ static void __attribute__((noreturn)) __not_in_flash_func(bus_core_entry)(void) 
     uint32_t irq_state = save_and_disable_interrupts();
     (void)irq_state;
 
-    sio_hw->gpio_set = 1u << PIN_RESET_N;
     bus_service_loop();
 }
 

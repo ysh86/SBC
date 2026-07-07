@@ -32,11 +32,8 @@ enum {
     MPU_E_DIVISOR = 4,
     MPU_CLOCK_KHZ = SYS_CLOCK_KHZ / (2 * CLOCK_OUT_HALF_CYCLES * MPU_E_DIVISOR),
     MEMORY_SIZE = 64 * 1024,
-    RAM_SIZE = 56 * 1024,
-    IO_SIZE = 4 * 1024,
-    ROM_SIZE = 4 * 1024,
+    RAM_END = 0xefff,
     MPU_IO_BASE = 0xe000,
-    MPU_IO_END = MPU_IO_BASE + IO_SIZE - 1,
     MPU_ROM_BASE = 0xf000,
     ACIA_STATUS_ADDR = MPU_IO_BASE,
     ACIA_DATA_ADDR = MPU_IO_BASE + 1,
@@ -45,6 +42,7 @@ enum {
 enum {
     ADDRESS_MASK = 0x0000ffffu,
     DATA_MASK = 0x00ff0000u,
+    RESET_N_MASK = 1u << PIN_RESET_N,
     E_MASK = 1u << PIN_E,
     RW_MASK = 1u << PIN_RW,
     VMA_MASK = 1u << PIN_VMA,
@@ -58,7 +56,6 @@ enum {
 };
 
 static uint8_t memory[MEMORY_SIZE] __attribute__((section(".data.memory_image"), aligned(4), used)) = {
-    [MPU_IO_BASE ... MPU_IO_END] = 0xff,
     [MPU_ROM_BASE] =
 #include "rom_image.h"
 };
@@ -129,6 +126,8 @@ static void __not_in_flash_func(usb_service_loop)(void) {
     if (stdio_usb_connected()) {
         usb_write_banner();
     }
+
+    sio_hw->gpio_set = RESET_N_MASK;
 
     for (;;) {
         bool connected = stdio_usb_connected();
@@ -230,6 +229,11 @@ static void init_clock_pio(PIO pio, uint sm) {
 }
 
 static void __attribute__((noinline, noreturn)) __not_in_flash_func(bus_service_loop)(void) {
+    // Wait until RESET_N is released.
+    while ((sio_hw->gpio_in & RESET_N_MASK) == 0u) {
+        tight_loop_contents();
+    }
+
     for (;;) {
         uint32_t pins;
 
@@ -262,10 +266,10 @@ static void __attribute__((noinline, noreturn)) __not_in_flash_func(bus_service_
 
             uint8_t value = (uint8_t)(pins >> PIN_DATA_BASE);
 
-            if (address < RAM_SIZE) {
-                memory[address] = value;
-            } else if (address == ACIA_DATA_ADDR) {
+            if (address == ACIA_DATA_ADDR) {
                 acia_write_data(value);
+            } else if (address <= RAM_END && address != ACIA_STATUS_ADDR) {
+                memory[address] = value;
             }
         }
     }
@@ -275,7 +279,6 @@ static void __attribute__((noreturn)) __not_in_flash_func(bus_core_entry)(void) 
     uint32_t irq_state = save_and_disable_interrupts();
     (void)irq_state;
 
-    sio_hw->gpio_set = 1u << PIN_RESET_N;
     bus_service_loop();
 }
 
