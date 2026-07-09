@@ -27,8 +27,9 @@
 // $7_FFF0: supervisor stack (Initial SSP)
 // $7_FFF0: I/O
 //
-// BASIC to Mon: SSP=0x0007_fff0, PC=0x0007_e0c0
+// Enhanced 68k BASIC V3.54: load @ $0_0400-$0_39FF
 // Mon to BASIC: SSP=0x0000_3e00, PC=0x0000_0456
+// BASIC to Mon: SSP=0x0007_fff0, PC=0x0007_e0c0
 //
 
 // $7_E000: vectors
