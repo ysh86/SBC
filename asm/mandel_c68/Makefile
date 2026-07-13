@@ -1,4 +1,5 @@
 EXEC=mandel
+MODE=fixed8.8
 
 CC=c68
 LD=/usr/lib/ld
@@ -12,8 +13,8 @@ LIB=/usr/lib
 
 all:	$(EXEC)
 
-$(EXEC):	$(EXEC).o $(LIB)/libc.a head.o
-	$(LD) -o $(EXEC).ack $(LFLAGS) head.o $(EXEC).o \
+$(EXEC):	$(MODE)/$(EXEC).o $(LIB)/libc.a head.o
+	$(LD) -o $(EXEC).ack $(LFLAGS) head.o $(MODE)/$(EXEC).o \
 		$(LIB)/libc.a $(LIB)/end.o
 	$(CV) $(EXEC).ack $(EXEC).mix
 	@rm -f $(EXEC).ack
