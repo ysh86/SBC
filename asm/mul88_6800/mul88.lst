@@ -1,0 +1,103 @@
+ AS V1.42 Beta [Bld 273] - Source File mul88.s - Page 1 - 7/16/2026 9:7:0
+
+
+    1/   0 :                            	page	0
+    2/   0 :                            	cpu	6800
+    3/   0 :                            
+    4/   0 : =$A                        W	equ	$0A		; (B:23-16,) W:15-8, W+1:7-0, XHXL, const BA
+    5/   0 : =$2F                       F	equ	$2F		; counter
+    6/   0 :                            
+    7/EA00 :                            	org	$EA00
+    8/EA00 :                            
+    9/EA00 :                            MUL88:
+   10/EA00 : 97 0F                      	staa	W+5
+   11/EA02 : D7 0E                      	stab	W+4
+   12/EA04 : DF 0C                      	stx	W+2
+   13/EA06 : 96 0D                      	ldaa	W+3
+   14/EA08 : 36                         	psha			; XL -> 1,x
+   15/EA09 : D6 0C                      	ldab	W+2
+   16/EA0B : 37                         	pshb			; XH -> 0,x
+   17/EA0C : 30                         	tsx
+   18/EA0D : 86 10                      	ldaa	#$10
+   19/EA0F : 97 2F                      	staa	F
+   20/EA11 : 5F                         	clrb
+   21/EA12 : D7 0A                      	stab	W
+   22/EA14 : D7 0B                      	stab	W+1
+   23/EA16 :                            MLT2:
+   24/EA16 : 78 00 0B                   	asl	W+1		; prod << 1
+   25/EA19 : 79 00 0A                   	rol	W
+   26/EA1C : 59                         	rolb
+   27/EA1D : 79 00 0D                   	rol	W+3		; c,X = X << 1
+   28/EA20 : 79 00 0C                   	rol	W+2
+   29/EA23 : 24 0E                      	bcc	MLTN
+   30/EA25 : 96 0B                      	ldaa	W+1		; B,prod += BA
+   31/EA27 : 9B 0F                      	adda	W+5
+   32/EA29 : 97 0B                      	staa	W+1
+   33/EA2B : 96 0A                      	ldaa	W
+   34/EA2D : 99 0E                      	adca	W+4
+   35/EA2F : 97 0A                      	staa	W
+   36/EA31 : C9 00                      	adcb	#0
+   37/EA33 :                            MLTN:
+   38/EA33 : 7A 00 2F                   	dec	F
+   39/EA36 : 26 DE                      	bne	MLT2
+   40/EA38 : 96 0A                      	ldaa	W
+   41/EA3A :                            ; B sign
+   42/EA3A : 6D 00                      	tst	0,x
+   43/EA3C : 2A 02                      	bpl	_plX
+   44/EA3E : D0 0F                      	subb	W+5
+   45/EA40 :                            _plX:
+   46/EA40 : 7D 00 0E                   	tst	W+4
+   47/EA43 : 2A 02                      	bpl	_sign
+   48/EA45 : E0 01                      	subb	1,x
+   49/EA47 :                            _sign
+   50/EA47 : 5D                         	tstb
+   51/EA48 : 2A 0A                      	bpl	_mret
+   52/EA4A : 96 0B                      	ldaa	W+1
+   53/EA4C : 8B FF                      	adda	#255
+   54/EA4E : 96 0A                      	ldaa	W
+   55/EA50 : 89 00                      	adca	#0
+   56/EA52 : C9 00                      	adcb	#0
+   57/EA54 :                            _mret:
+   58/EA54 : 31                         	ins
+   59/EA55 : 31                         	ins
+   60/EA56 : 39                         	rts
+   61/EA57 :                            
+ AS V1.42 Beta [Bld 273] - Source File mul88.s - Page 2 - 7/16/2026 9:7:0
+
+
+  Symbol Table (* = unused):
+  --------------------------
+
+*ARCHITECTURE :                                        "i386-unknown-win32" - |
+*CASESENSITIVE :                  0 - | *CONSTPI :        3.141592653589793 - |
+*DATE :                 "7/16/2026" - |  F :                             2F - |
+*FALSE :                          0 - | *HAS64 :                          0 - |
+*LISTON :                         1 - | *MACEXP :                         7 - |
+ MLT2 :                        EA16 C |  MLTN :                        EA33 C |
+*MOMCPU :                      6800 - | *MOMCPUNAME :                "6800" - |
+*MUL88 :                       EA00 C | *NESTMAX :                      100 - |
+*PADDING :                        0 - | *RELAXED :                        0 - |
+*TIME :                     "9:7:0" - | *TRUE :                           1 - |
+*VERSION :                     142F - |  W :                              A - |
+ _MRET :                       EA54 C |  _PLX :                        EA40 C |
+ _SIGN :                       EA47 C |
+
+     24 symbols
+     17 unused symbols
+
+ AS V1.42 Beta [Bld 273] - Source File mul88.s - Page 3 - 7/16/2026 9:7:0
+
+
+  Code Pages:
+  ----------
+
+STANDARD (0 changed characters)
+
+1 code page
+
+0.01 seconds assembly time
+
+     61 lines source file
+      2 passes
+      0 errors
+      0 warnings
