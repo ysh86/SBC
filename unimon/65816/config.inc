@@ -1,16 +1,16 @@
 ;;; -*- asm -*-
 ;;;
-;;; Universal Monitor 6502 config file
+;;; Universal Monitor 65816 config file
 ;;;
 
 ;;;
 ;;; Memory
 ;;;
 
-ROM_B:	EQU	$F600
-ENTRY:	EQU	$FF80		; Entry point
+ROM_B:	EQU	$6600
+ENTRY:	EQU	$6F80		; Entry point
 
-WORK_B:	EQU	$0000		; Must fit in ZERO page
+WORK_B:	EQU	$0000		; Must fit in ZERO/Direct page
 STACK:	EQU	$01FF
 
 BUFLEN:	EQU	16		; Buffer length ( 16 or above )

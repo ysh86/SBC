@@ -71,6 +71,8 @@ static uint8_t memory[MEMORY_SIZE] __attribute__((section(".data.memory_image"),
     [0 ... MEMORY_SIZE - 1] = 0xff,
     [0 ... RAM_SIZE - 1] = 0x00,
     [MPU_RAM2_BASE ... MPU_RAM2_BASE + RAM_SIZE - 1] = 0x00,
+    [0x6600] =
+#include "ram_native_mon.h"
     // MPU_ROM_BASE through $bfff remains $ff; the included ROM image starts at $c000.
     [0xc000] =
 #include "rom_image.h"

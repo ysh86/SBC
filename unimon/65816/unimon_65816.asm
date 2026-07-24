@@ -1,15 +1,55 @@
 ;;;
-;;; Universal Monitor 6502
+;;; Universal Monitor 65816
 ;;;   Copyright (C) 2019 Haruo Asano
 ;;;
 
 	CPU	6502
 
-TARGET:	EQU	"6502"
+TARGET:	EQU	"65816"
 
 	INCLUDE	"config.inc"
 
 	INCLUDE "../common.inc"
+
+;;;
+;;; RAM	area
+;;;
+
+	;;
+	;; Work Area
+	;;
+
+	ORG	WORK_B
+
+INBUF:	RMB	BUFLEN		; Line input buffer
+DSADDR:	RMB	2		; Dump start address
+DEADDR:	RMB	2		; Dump end address
+DSTATE:	RMB	1		; Dump state
+GADDR:	RMB	2		; Go address
+SADDR:	RMB	2		; Set address
+HEXMOD:	RMB	1		; HEX file mode
+RECTYP:	RMB	1		; Record type
+PSPEC:	RMB	1		; Processor spec.
+
+	IF USE_REGCMD
+REGA:	RMB	1		; Accumulator A
+REGX:	RMB	1		; Index register X
+REGY:	RMB	1		; Index register Y
+REGPSR:	RMB	1		; Processor status register PSR
+REGSP:	RMB	2		; Stack pointer SP(L,H)
+REGPC:	RMB	2		; Program counter PC
+
+REGSIZ:	RMB	1		; Register size
+	ENDIF
+REGEMU:	RMB	1		; Emulation 0:native, 1:emulation
+
+DMPPT:	RMB	2
+CKSUM:	RMB	1		; Checksum
+HITMP:	RMB	1		; Temporary (used in HEXIN)
+
+PT0:	RMB	2		; Generic Pointer 0
+PT1:	RMB	2		; Generic Pointer 1
+CNT:	RMB	1		; Generic Counter
 
 ;;;
 ;;; ROM area
@@ -20,6 +60,14 @@ TARGET:	EQU	"6502"
 CSTART:
 	LDX	#low(STACK)
 	TXS
+
+	JSR	IDENT		; 816: switch to Native mode, ZP -> DP
+	STA	PSPEC
+	LDA	PT0
+	STA	PT1
+	LDA	PT0+1
+	STA	PT1+1
+
 	JSR	INIT
 
 	LDA	#$00
@@ -29,7 +77,7 @@ CSTART:
 	STA	SADDR+1
 	STA	GADDR
 	STA	GADDR+1
-	STA	PSPEC
+	STA	REGEMU
 	LDA	#'S'
 	STA	HEXMOD
 
@@ -40,66 +88,25 @@ CSTART:
 	STA	REGY
 	STA	REGPC
 	STA	REGPC+1
-	STA	REGPSR
+	LDA	#$30
+	STA	REGPSR		; 816: M=1, X=1
+	LDA	#high(STACK)
+	STA	REGSP+1
 	TSX
 	STX	REGSP
 	ENDIF
-	
+
 	;; Opening message
 	LDA	#low(OPNMSG)
 	STA	PT0
 	LDA	#high(OPNMSG)
 	STA	PT0+1
 	JSR	STROUT
-
-	;; CPU identification
-	IF USE_IDENT
-	FCB	$80,ID65C-*-2	; BRA ID65C on 65C02, NOP #xx on 6502
-
-	SED
-	CLC
-	LDA	#5
-	ADC	#5
-	CMP	#10
-	CLD
-	BEQ	ID2A03
-	;; 6502
-	LDA	#low(IM65)
+	LDA	PT1
 	STA	PT0
-	LDA	#high(IM65)
+	LDA	PT1+1
 	STA	PT0+1
-	LDA	#$00
-	JMP	IDE
-	;; 65C02
-ID65C:
-	FCB	$0F,$A9,IDR65C-*-3 ; BBR0 $A9,IDR65C on R65C02, NOP / LDA,#xx on 65C02
-	FCB	$8F,$A9,IDR65C-*-3 ; BBS0 $A9,IDR65C on R65C02, NOP / LDA,#xx on 65C02
-	
-	LDA	#low(IM65C)
-	STA	PT0
-	LDA	#high(IM65C)
-	STA	PT0+1
-	LDA	#$01
-	JMP	IDE
-	;; R65C02
-IDR65C:
-	LDA	#low(IMR65C)
-	STA	PT0
-	LDA	#high(IMR65C)
-	STA	PT0+1
-	LDA	#$03
-	JMP	IDE
-	;; RP2A03
-ID2A03:
-	LDA	#low(IM2A03)
-	STA	PT0
-	LDA	#high(IM2A03)
-	STA	PT0+1
-	LDA	#$10	
-IDE:
-	STA	PSPEC
 	JSR	STROUT
-	ENDIF
 
 WSTART:
 	LDA	#low(PROMPT)
@@ -120,6 +127,11 @@ WSTART:
 M00:
 	CMP	#'G'
 	BNE	M01
+	LDA	PSPEC
+	CMP	#4
+	BNE	GOEMU
+	LDA	#0	; 816: native
+	STA	REGEMU
 	JMP	GO
 M01:
 	CMP	#'S'
@@ -130,13 +142,19 @@ M02:
 	BNE	M03
 	JMP	LOADH
 M03:
-	
 	IF USE_REGCMD
 	CMP	#'R'
 	BNE	M05
 	JMP	REG
 	ENDIF
-M05:	
+M05:
+	CMP	#'E'
+	BNE	M06
+GOEMU:
+	LDA	#1	; 816: emulation or 6502
+	STA	REGEMU
+	JMP	GO
+M06:
 ERR:
 	LDA	#low(ERRMSG)
 	STA	PT0
@@ -159,7 +177,7 @@ DUMP:
 	JSR	SKIPSP
 	LDA	INBUF,X
 	BNE	ERR
-DP00:	
+DP00:
 	LDA	DSADDR
 	CLC
 	ADC	#128
@@ -354,7 +372,19 @@ G00:
 	STA	REGPC+1
 G0:
 	LDX	REGSP
-	TXS			; SP
+	TXS			; SP(L)
+	LDA	PSPEC
+	CMP	#4
+	BNE	_GPC
+	LDA	REGSP+1
+	FCB	$EB		; XBA
+	LDA	REGSP		; BA -> SP(H,L)
+	FCB	$1B		; TCS
+	LDA	REGEMU
+	BNE	_GPC
+	LDA	#0
+	PHA			; PBR=0
+_GPC:
 	LDA	REGPC+1
 	PHA			; PC(H)
 	LDA	REGPC
@@ -362,8 +392,29 @@ G0:
 	LDA	REGPSR
 	PHA			; PSR
 	LDA	REGA
-	LDX	REGX
-	LDY	REGY
+	PHA
+	LDA	REGY
+	PHA
+	LDA	REGX
+	PHA
+	LDA	PSPEC
+	CMP	#4
+	BNE	_GXYA
+	LDA	REGEMU
+	BEQ	_GNTV
+	SEC
+	FCB	$FB		; XCE: Emulation mode
+_GNTV
+	LDA	#0
+	FCB	$EB		; XBA
+	LDA	#0
+	FCB	$5B		; TCD set Zero Page for App
+_GXYA:
+	PLA
+	TAX
+	PLA
+	TAY
+	PLA
 	RTI
 	ELSE			; !USE_REGCMD
 	LDA	PT1
@@ -446,6 +497,9 @@ SM4:
 SMER:
 	JMP	ERR
 SM40:
+	LDA	INBUF,X
+	BNE	SMER
+
 	LDA	PT1
 	LDY	#0
 	STA	(SADDR),Y
@@ -465,7 +519,7 @@ LH0:
 	JSR	CONIN
 	JSR	UPPER
 	CMP	#'S'
-	BEQ	LHS0
+	BEQ	LHS00
 LH1a:
 	CMP	#':'
 	BEQ	LHI0
@@ -478,6 +532,9 @@ LH2:
 LH3:
 	JSR	CONIN
 	JMP	LH2
+
+LHS00:
+	BEQ	LHS0
 
 LHI0:
 	JSR	HEXIN
@@ -722,6 +779,8 @@ RG5:
 	JSR	RDHEX
 	LDA	CNT
 	BEQ	RGR
+	LDA	INBUF,X
+	BNE	RGE0
 	LDX	CKSUM		; Restore X
 	LDA	REGSIZ
 	CMP	#1
@@ -742,7 +801,7 @@ RGR:
 	
 RGE0:	
 	JMP	ERR
-	
+
 RDUMP:
 	LDA	#low(RDSA)	; A
 	STA	PT0
@@ -773,8 +832,10 @@ RDUMP:
 	LDA	#high(RDSSP)
 	STA	PT0+1
 	JSR	STROUT
-	LDA	REGSP
+	LDA	REGSP+1		; SP(H)
 	JSR	HEXOUT2
+	LDA	REGSP
+	JSR	HEXOUT2		; SP(L)
 
 	LDA	#low(RDSPC)	; PC
 	STA	PT0
@@ -964,6 +1025,45 @@ RHE:
 ;;;
 ;;; Interrupt handler
 ;;;
+	;; Break (Native mode)
+BRKNTV:
+	PHA
+	LDA	#high(ENTRY)
+	FCB	$EB		; XBA
+	LDA	#0
+	FCB	$5B		; TCD set Direct Page for Native monitor
+
+	PLA
+	STA	REGA		; A
+	TXA			; X
+	STA	REGX
+	TYA			; Y
+	STA	REGY
+	PLA			; PSR (Pushed by BRK)
+	STA	REGPSR
+	PLA			; PC(L) (Pushed by BRK)
+	SEC
+	SBC	#2		; Adjust PC to point BRK instruction
+	STA	REGPC
+	PLA			; PC(H) (Pushed by BRK)
+	SBC	#0
+	STA	REGPC+1
+	PLA			; PBR (Pushed by BRK)
+	FCB	$3B		; TSC: SP(H,L) -> BA
+	FCB	$EB		; XBA
+	STA	REGSP+1		; SP(H)
+	TSX			; SP(L)
+	STX	REGSP
+
+	LDA	#low(BRKMSG)
+	STA	PT0
+	LDA	#high(BRKMSG)
+	STA	PT0+1
+	JSR	STROUT
+	JSR	RDUMP
+	JMP	WSTART
+
+
 	;; Interrupt / Break
 IRQBRK:
 	IF USE_REGCMD
@@ -973,7 +1073,9 @@ IRQBRK:
 	AND	#$10		; Check B flag
 	BEQ	IBIR
 	CLD
-	
+
+	JSR	IDENT		; 816: switch to Native mode, ZP -> DP
+
 	PLA			; A
 	STA	REGA
 	TXA			; X
@@ -989,7 +1091,9 @@ IRQBRK:
 	PLA			; PC(H) (Pushed by BRK)
 	SBC	#0
 	STA	REGPC+1
-	TSX			; SP
+	LDA	#high(STACK)
+	STA	REGSP+1		; SP(H)
+	TSX			; SP(L)
 	STX	REGSP
 
 	LDA	#low(BRKMSG)
@@ -1007,9 +1111,82 @@ IBIR:
 	;; Dummy
 	RTI
 	ENDIF			; USE_REGCMD
-	
+
+;;;
+;;; CPU identification
+;;;
+IDENT:
+	FCB	$80,ID65C-*-2	; BRA ID65C on 65C02/816, NOP #xx on 6502
+
+	SED
+	CLC
+	LDA	#5
+	ADC	#5
+	CMP	#10
+	CLD
+	BEQ	ID2A03
+	;; 6502
+	LDA	#low(IM65)
+	STA	PT0
+	LDA	#high(IM65)
+	STA	PT0+1
+	LDA	#$00
+	JMP	IDE
+	;; 65C
+ID65C:
+	;; 65C816
+	LDA	#0
+	FCB	$EB		; XBA or NOP
+	LDA	#1
+	FCB	$EB		; XBA or NOP
+	BNE	IDC02		; A != 0 if 65C02
+	SEC
+	FCB	$FB		; XCE: Emulation mode
+	CLC
+	FCB	$FB		; XCE: Native mode
+	LDA	#high(ENTRY)
+	FCB	$EB		; XBA
+	LDA	#0
+	FCB	$5B		; TCD: set Direct Page for Native monitor
+	LDA	#low(IMC816)
+	STA	PT0
+	LDA	#high(IMC816)
+	STA	PT0+1
+	LDA	#$04
+	JMP	IDE
+
+	;; 65C02
+IDC02:
+	FCB	$0F,$A9,IDR65C-*-3 ; BBR0 $A9,IDR65C on R65C02/W65C02, NOP / LDA,#xx on 65C02
+	FCB	$8F,$A9,IDR65C-*-3 ; BBS0 $A9,IDR65C on R65C02/W65C02, NOP / LDA,#xx on 65C02
+
+	LDA	#low(IM65C)
+	STA	PT0
+	LDA	#high(IM65C)
+	STA	PT0+1
+	LDA	#$01
+	JMP	IDE
+	;; R65C02
+IDR65C:
+	LDA	#low(IMR65C)
+	STA	PT0
+	LDA	#high(IMR65C)
+	STA	PT0+1
+	LDA	#$03
+	JMP	IDE
+	;; RP2A03
+ID2A03:
+	LDA	#low(IM2A03)
+	STA	PT0
+	LDA	#high(IM2A03)
+	STA	PT0+1
+	LDA	#$10
+IDE:
+	RTS
+
+
 OPNMSG:
-	FCB	CR,LF,"Universal Monitor 6502",CR,LF,$00
+	FCB	CR,LF,"Universal Monitor 65816",CR,LF,$00
 PROMPT:
 	FCB	"] ",$00
 IHEMSG:
@@ -1030,13 +1207,12 @@ IHEXER:
 SRECER:
         FCB	"S9030000FC",CR,LF,$00
 
-	IF USE_IDENT
 IM65:	FCB	"6502",CR,LF,$00
 IM65C:	FCB	"65C02",CR,LF,$00
 IMR65C:	FCB	"R65C02/W65C02",CR,LF,$00
+IMC816:	FCB	"65C816",CR,LF,$00
 IM2A03:	FCB	"RP2A03",CR,LF,$00
-	ENDIF			; USE_IDENT
-	
+
 	IF USE_REGCMD
 
 BRKMSG:	FCB	"BRK",CR,LF,$00
@@ -1044,7 +1220,7 @@ BRKMSG:	FCB	"BRK",CR,LF,$00
 RDSA:	FCB	"A=",$00
 RDSX:	FCB	" X=",$00
 RDSY:	FCB	" Y=",$00
-RDSSP:	FCB	" SP=01",$00
+RDSSP:	FCB	" SP=",$00
 RDSPC:	FCB	" PC=",$00
 RDSPSR:	FCB	" PSR=",$00
 
@@ -1059,14 +1235,14 @@ RNTAB:
 	FDB	RNTABS,0
 	FCB	'P',$80
 	FDB	RNTABP,0
-	
+
 	FCB	$00,0		; End mark
 	FDB	0,0
 
 RNTABS:
-	FCB	'P',1
+	FCB	'P',2
 	FDB	REGSP,RNSP
-	
+
 	FCB	$00,0		; End mark
 	FDB	0,0
 
@@ -1085,14 +1261,14 @@ RNTABPS:
 
 	FCB	$00,0		; End mark
 	FDB	0,0
-	
+
 RNA:	FCB	"A",$00
 RNX:	FCB	"X",$00
 RNY:	FCB	"Y",$00
 RNSP:	FCB	"SP",$00
 RNPC:	FCB	"PC",$00
 RNPSR:	FCB	"PSR",$00
-	
+
 	ENDIF
 
 	IF	USE_DEV_6551
@@ -1137,53 +1313,20 @@ E_CONST:
 
 	;;
 	;; Vector area
-	;; 
+	;;
 
-	ORG	$FFFA
-
+	; 65816 Native mode
+	ORG	high(ENTRY)*256+$E6
+	FDB	BRKNTV		; BRK
+	FDB	$0000		; ABORT
 	FDB	$0000		; NMI
+	FDB	$0000		; (Reserved)
+	FDB	$0000		; IRQ
 
+	; 6502
+	ORG	high(ENTRY)*256+$FA
+	FDB	$0000		; NMI
 	FDB	CSTART		; RESET
-
 	FDB	IRQBRK		; IRQ/BRK
-
-;;;
-;;; RAM	area
-;;;
-
-	;;
-	;; Work Area
-	;;
-
-	ORG	WORK_B
-
-INBUF:	RMB	BUFLEN		; Line input buffer
-DSADDR:	RMB	2		; Dump start address
-DEADDR:	RMB	2		; Dump end address
-DSTATE:	RMB	1		; Dump state
-GADDR:	RMB	2		; Go address
-SADDR:	RMB	2		; Set address
-HEXMOD:	RMB	1		; HEX file mode
-RECTYP:	RMB	1		; Record type
-PSPEC:	RMB	1		; Processor spec.
-
-	IF USE_REGCMD
-REGA:	RMB	1		; Accumulator A
-REGX:	RMB	1		; Index register X
-REGY:	RMB	1		; Index register Y
-REGSP:	RMB	1		; Stack pointer SP
-REGPC:	RMB	2		; Program counter PC
-REGPSR:	RMB	1		; Processor status register PSR
-
-REGSIZ:	RMB	1		; Register size
-	ENDIF
-	
-DMPPT:	RMB	2
-CKSUM:	RMB	1		; Checksum
-HITMP:	RMB	1		; Temporary (used in HEXIN)
-
-PT0:	RMB	2		; Generic Pointer 0
-PT1:	RMB	2		; Generic Pointer 1
-CNT:	RMB	1		; Generic Counter
 
 	END

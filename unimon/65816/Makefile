@@ -1,13 +1,13 @@
 #
 # Makefile
-#   Universal Monitor for MCS6502
+#   Universal Monitor for W65C816S
 #
 
 .SUFFIXES: .asm .p .bin .hex .sr
 
 devs :=	dev/dev_6850.asm
 
-all:	unimon_6502.bin unimon_6502.hex
+all:	unimon_65816.bin unimon_65816.hex
 
 .p.bin:
 	p2bin -v $*.p $*.bin

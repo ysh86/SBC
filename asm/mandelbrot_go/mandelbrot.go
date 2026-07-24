@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 )
 
 func Mandelbrot() {
@@ -82,6 +83,13 @@ func mul88(a int16, b int16) int16 {
 	if product < 0 {
 		product += 255
 	}
+	/* round
+	if product < 0 {
+		product += 127
+	} else {
+		product += 128
+	}
+	*/
 
 	ov := uint32(product) >> 21
 	if ov != 0 && ov != 0x7ff {
@@ -96,17 +104,20 @@ func MandelbrotFixed88() {
 	var ca, cb, a, b, t int16
 	var square_diff, aa, bb int16
 
+	sumi := 0
+
 	for y = -12; y <= 12; y += 1 {
+		cb = int16(int32(y) * FP88_Y_STEP)
 		for x = -39; x <= 39; x += 1 {
 			ca = int16(int32(x) * FP88_X_STEP)
-			cb = int16(int32(y) * FP88_Y_STEP)
 			a = ca
 			b = cb
 			square_diff = mul88(a-b, a+b)
+			fmt.Fprintf(os.Stderr, "%04x * %04x -> %04x\n", uint16(a-b), uint16(a+b), uint16(square_diff))
 			chr := " "
 			for i = 0; i < 16; i++ {
 				t = square_diff + ca
-				b = 2*mul88(a, b) + cb
+				b = (mul88(a, b) << 1) + cb
 				a = t
 				aa = mul88(a, a)
 				bb = mul88(b, b)
@@ -116,13 +127,17 @@ func MandelbrotFixed88() {
 						i = i + 7
 					}
 					chr = string(rune(48 + i))
+					sumi += 1
 					break
 				}
+				sumi += 1
 			}
 			fmt.Print(chr)
 		}
 		fmt.Println("")
 	}
+
+	fmt.Fprintf(os.Stderr, "sum I: %d, avg. I: %f\n", sumi, float32(sumi)/float32(12+1+12)/float32(39+1+39))
 }
 
 func main() {
