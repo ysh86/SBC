@@ -1,91 +1,359 @@
- AS V1.42 Beta [Bld 273] - Source File mul88.s - Page 1 - 7/16/2026 9:7:0
+ AS V1.42 Beta [Bld 273] - Source File mul88.s - Page 1 - 7/25/2026 17:51:12
 
 
     1/   0 :                            	page	0
     2/   0 :                            	cpu	6800
     3/   0 :                            
-    4/   0 : =$A                        W	equ	$0A		; (B:23-16,) W:15-8, W+1:7-0, XHXL, const BA
-    5/   0 : =$2F                       F	equ	$2F		; counter
-    6/   0 :                            
-    7/EA00 :                            	org	$EA00
-    8/EA00 :                            
-    9/EA00 :                            MUL88:
-   10/EA00 : 97 0F                      	staa	W+5
-   11/EA02 : D7 0E                      	stab	W+4
-   12/EA04 : DF 0C                      	stx	W+2
-   13/EA06 : 96 0D                      	ldaa	W+3
-   14/EA08 : 36                         	psha			; XL -> 1,x
-   15/EA09 : D6 0C                      	ldab	W+2
-   16/EA0B : 37                         	pshb			; XH -> 0,x
-   17/EA0C : 30                         	tsx
-   18/EA0D : 86 10                      	ldaa	#$10
-   19/EA0F : 97 2F                      	staa	F
-   20/EA11 : 5F                         	clrb
-   21/EA12 : D7 0A                      	stab	W
-   22/EA14 : D7 0B                      	stab	W+1
-   23/EA16 :                            MLT2:
-   24/EA16 : 78 00 0B                   	asl	W+1		; prod << 1
-   25/EA19 : 79 00 0A                   	rol	W
-   26/EA1C : 59                         	rolb
-   27/EA1D : 79 00 0D                   	rol	W+3		; c,X = X << 1
-   28/EA20 : 79 00 0C                   	rol	W+2
-   29/EA23 : 24 0E                      	bcc	MLTN
-   30/EA25 : 96 0B                      	ldaa	W+1		; B,prod += BA
-   31/EA27 : 9B 0F                      	adda	W+5
-   32/EA29 : 97 0B                      	staa	W+1
-   33/EA2B : 96 0A                      	ldaa	W
-   34/EA2D : 99 0E                      	adca	W+4
-   35/EA2F : 97 0A                      	staa	W
-   36/EA31 : C9 00                      	adcb	#0
-   37/EA33 :                            MLTN:
-   38/EA33 : 7A 00 2F                   	dec	F
-   39/EA36 : 26 DE                      	bne	MLT2
-   40/EA38 : 96 0A                      	ldaa	W
-   41/EA3A :                            ; B sign
-   42/EA3A : 6D 00                      	tst	0,x
-   43/EA3C : 2A 02                      	bpl	_plX
-   44/EA3E : D0 0F                      	subb	W+5
-   45/EA40 :                            _plX:
-   46/EA40 : 7D 00 0E                   	tst	W+4
-   47/EA43 : 2A 02                      	bpl	_sign
-   48/EA45 : E0 01                      	subb	1,x
-   49/EA47 :                            _sign
-   50/EA47 : 5D                         	tstb
-   51/EA48 : 2A 0A                      	bpl	_mret
-   52/EA4A : 96 0B                      	ldaa	W+1
-   53/EA4C : 8B FF                      	adda	#255
-   54/EA4E : 96 0A                      	ldaa	W
-   55/EA50 : 89 00                      	adca	#0
-   56/EA52 : C9 00                      	adcb	#0
-   57/EA54 :                            _mret:
-   58/EA54 : 31                         	ins
-   59/EA55 : 31                         	ins
-   60/EA56 : 39                         	rts
-   61/EA57 :                            
- AS V1.42 Beta [Bld 273] - Source File mul88.s - Page 2 - 7/16/2026 9:7:0
+    4/   0 :                            ;;
+    5/   0 :                            ;; const
+    6/   0 :                            ;;
+    7/   0 : =$C                        FP88_X_STEP	equ	12	; /* round(0.0458 * 256) */
+    8/   0 : =$15                       FP88_Y_STEP	equ	21	; /* round(0.08333 * 256) */
+    9/   0 : =$4                        FP88_FOUR	equ	4
+   10/   0 :                            
+   11/   0 : =$FFFFFFD9                 X_MIN		equ	-39
+   12/   0 : =$FFFFFFF4                 Y_MIN		equ	-12
+   13/   0 : =$28                       X_MAX		equ	40
+   14/   0 : =$D                        Y_MAX		equ	13
+   15/   0 :                            
+   16/   0 : =$D                        CR		equ	$0D
+   17/   0 : =$A                        LF		equ	$0A
+   18/   0 : =$F839                     CONOUT		equ	$f839
+   19/   0 :                            
+   20/   0 :                            ;;
+   21/   0 :                            ;; Zero page
+   22/   0 :                            ;;
+   23/   0 : =$A                        W	equ	$0A		; (B:23-16,) W:15-8, W+1:7-0
+   24/   0 : =$C                        WT	equ	$0C		; temp MHML
+   25/   0 : =$E                        WN	equ	$0E		; const NHNL
+   26/   0 : =$2F                       F	equ	$2F		; counter
+   27/   0 :                            
+   28/   0 : =$90                       CA	equ	$90
+   29/   0 : =$92                       CB	equ	$92
+   30/   0 : =$94                       A	equ	$94
+   31/   0 : =$96                       B	equ	$96
+   32/   0 : =$98                       T	equ	$98
+   33/   0 : =$9A                       SQD	equ	$9A
+   34/   0 : =$9C                       AA	equ	$9C
+   35/   0 : =$9E                       BB	equ	$9E
+   36/   0 : =$A0                       I	equ	$A0
+   37/   0 : =$A1                       CHR	equ	$A1
+   38/   0 :                            
+   39/   0 :                            ;;
+   40/   0 :                            ;; main
+   41/   0 :                            ;;
+   42/E100 :                            	org	$E100
+   43/E100 :                            
+   44/E100 : C6 F4                      	ldab	#Y_MIN
+   45/E102 :                            FOR_Y:
+   46/E102 : D7 0E                      	stab	WN
+   47/E104 : 86 15                      	ldaa	#FP88_Y_STEP
+   48/E106 : 97 0D                      	staa	WT+1
+   49/E108 : 37                         	pshb
+   50/E109 : BD EA 04                   	jsr	MULUS8a		; CB = FP88_Y_STEP(unsigned) * Y(signed)
+   51/E10C : D7 92                      	stab	CB
+   52/E10E : 97 93                      	staa	CB+1
+   53/E110 : 33                         	pulb
+   54/E111 :                            
+   55/E111 : CE FF D9                   	ldx	#X_MIN
+   56/E114 :                            FOR_X:
+   57/E114 : 96 92                      	ldaa	CB		; CB -> B
+   58/E116 : 97 96                      	staa	B+0
+   59/E118 : 96 93                      	ldaa	CB+1
+   60/E11A : 97 97                      	staa	B+1
+   61/E11C :                            
+   62/E11C : DF 0E                      	stx	WN
+   63/E11E : 96 0F                      	ldaa	WN+1
+   64/E120 : 97 0E                      	staa	WN
+   65/E122 : 86 0C                      	ldaa	#FP88_X_STEP
+   66/E124 : 97 0D                      	staa	WT+1
+   67/E126 : 37                         	pshb
+   68/E127 : BD EA 04                   	jsr	MULUS8a		; CA = FP88_X_STEP * X, CA -> A
+   69/E12A : D7 90                      	stab	CA
+   70/E12C : D7 94                      	stab	A+0
+   71/E12E : 97 91                      	staa	CA+1
+   72/E130 : 97 95                      	staa	A+1
+   73/E132 : 33                         	pulb
+   74/E133 :                            
+   75/E133 : BD E1 8A                   	jsr	CALC_SQDIFF
+   76/E136 :                            
+   77/E136 : 86 10                      	ldaa	#$10
+   78/E138 : 97 A0                      	staa	I
+   79/E13A : 86 20                      	ldaa	#' '
+   80/E13C : 97 A1                      	staa	CHR
+   81/E13E :                            FOR_I:
+   82/E13E : BD E1 B0                   	jsr	CALC_FOR_I
+   83/E141 : 96 9D                      	ldaa	AA+1		; T = AA + BB
+   84/E143 : 9B 9F                      	adda	BB+1
+   85/E145 : 97 99                      	staa	T+1
+   86/E147 : 96 9C                      	ldaa	AA
+   87/E149 : 99 9E                      	adca	BB
+   88/E14B : 97 98                      	staa	T
+   89/E14D : 81 04                      	cmpa	#FP88_FOUR	; if T > (4 << 8)
+   90/E14F : 2D 16                      	blt	NEXT_I
+   91/E151 : 26 04                      	bne	CHAR
+   92/E153 : 96 99                      	ldaa	T+1
+   93/E155 : 27 10                      	beq	NEXT_I
+   94/E157 :                            CHAR:
+   95/E157 : 86 10                      	ldaa	#$10
+   96/E159 : 90 A0                      	suba	I
+   97/E15B : 81 0A                      	cmpa	#10
+   98/E15D : 2D 02                      	blt	NUM		; i = 0,1,2,3,4,5,6,7,8,9
+   99/E15F : 8B 07                      	adda	#7		; i = a,b,c,d,e,f
+  100/E161 :                            NUM:
+  101/E161 : 8B 30                      	adda	#'0'
+  102/E163 : 97 A1                      	staa	CHR
+  103/E165 : 20 05                      	bra	NEXT_X
+  104/E167 :                            NEXT_I:
+  105/E167 : 7A 00 A0                   	dec	I
+  106/E16A : 26 D2                      	bne	FOR_I
+  107/E16C :                            
+  108/E16C :                            NEXT_X:
+  109/E16C : 96 A1                      	ldaa	CHR
+  110/E16E : BD F8 39                   	jsr	CONOUT
+  111/E171 : 08                         	inx
+  112/E172 : 8C 00 28                   	cpx	#X_MAX
+  113/E175 : 26 9D                      	bne	FOR_X
+  114/E177 :                            
+  115/E177 :                            NEXT_Y:
+  116/E177 : 86 0D                      	ldaa	#CR
+  117/E179 : BD F8 39                   	jsr	CONOUT
+  118/E17C : 86 0A                      	ldaa	#LF
+  119/E17E : BD F8 39                   	jsr	CONOUT
+  120/E181 : 5C                         	incb
+  121/E182 : C1 0D                      	cmpb	#Y_MAX
+  122/E184 : 27 03                      	beq	DONE
+  123/E186 : 7E E1 02                   	jmp	FOR_Y
+  124/E189 :                            
+  125/E189 :                            DONE:
+  126/E189 : 3F                         	swi			; back to Monitor
+  127/E18A :                            
+  128/E18A :                            
+  129/E18A :                            CALC_SQDIFF:
+  130/E18A : 96 95                      	ldaa	A+1
+  131/E18C : 90 97                      	suba	B+1
+  132/E18E : 97 0D                      	staa	WT+1
+  133/E190 : 96 94                      	ldaa	A+0
+  134/E192 : 92 96                      	sbca	B+0
+  135/E194 : 97 0C                      	staa	WT
+  136/E196 :                            
+  137/E196 : 96 95                      	ldaa	A+1
+  138/E198 : 9B 97                      	adda	B+1
+  139/E19A : 97 0F                      	staa	WN+1
+  140/E19C : 96 94                      	ldaa	A+0
+  141/E19E : 99 96                      	adca	B+0
+  142/E1A0 : 97 0E                      	staa	WN
+  143/E1A2 :                            
+  144/E1A2 : DF 98                      	stx	T
+  145/E1A4 : 37                         	pshb
+  146/E1A5 : BD EA 35                   	jsr	MUL88a		; SQD = (a-b) * (a+b)
+  147/E1A8 : D7 9A                      	stab	SQD
+  148/E1AA : 97 9B                      	staa	SQD+1
+  149/E1AC : 33                         	pulb
+  150/E1AD : DE 98                      	ldx	T
+  151/E1AF :                            
+  152/E1AF : 39                         	rts
+  153/E1B0 :                            
+  154/E1B0 :                            
+  155/E1B0 :                            CALC_FOR_I:
+  156/E1B0 : DF 98                      	stx	T
+  157/E1B2 : 37                         	pshb
+  158/E1B3 :                            
+  159/E1B3 : 96 95                      	ldaa	A+1		; B = ((A * B) << 1) + CB
+  160/E1B5 : 97 0D                      	staa	WT+1
+  161/E1B7 : 96 94                      	ldaa	A+0
+  162/E1B9 : 97 0C                      	staa	WT
+  163/E1BB : 96 97                      	ldaa	B+1
+  164/E1BD : 97 0F                      	staa	WN+1
+  165/E1BF : 96 96                      	ldaa	B+0
+  166/E1C1 : 97 0E                      	staa	WN
+  167/E1C3 : BD EA 35                   	jsr	MUL88a
+  168/E1C6 : 48                         	asla
+  169/E1C7 : 59                         	rolb
+  170/E1C8 : 9B 93                      	adda	CB+1
+  171/E1CA : D9 92                      	adcb	CB
+  172/E1CC : 97 97                      	staa	B+1
+  173/E1CE : D7 96                      	stab	B+0
+  174/E1D0 :                            
+  175/E1D0 : 96 9B                      	ldaa	SQD+1		; A = SQD + CA, AA = A * A
+  176/E1D2 : 9B 91                      	adda	CA+1
+  177/E1D4 : 97 95                      	staa	A+1
+  178/E1D6 : 97 0D                      	staa	WT+1
+  179/E1D8 : 97 0F                      	staa	WN+1
+  180/E1DA : 96 9A                      	ldaa	SQD
+  181/E1DC : 99 90                      	adca	CA
+  182/E1DE : 97 94                      	staa	A+0
+  183/E1E0 : 97 0C                      	staa	WT
+  184/E1E2 : 97 0E                      	staa	WN
+  185/E1E4 : BD EA 35                   	jsr	MUL88a
+  186/E1E7 : 97 9D                      	staa	AA+1
+  187/E1E9 : D7 9C                      	stab	AA
+  188/E1EB :                            
+  189/E1EB : 96 97                      	ldaa	B+1		; BB = B * B
+  190/E1ED : 97 0D                      	staa	WT+1
+  191/E1EF : 97 0F                      	staa	WN+1
+  192/E1F1 : 96 96                      	ldaa	B+0
+  193/E1F3 : 97 0C                      	staa	WT
+  194/E1F5 : 97 0E                      	staa	WN
+  195/E1F7 : BD EA 35                   	jsr	MUL88a
+  196/E1FA : 97 9F                      	staa	BB+1
+  197/E1FC : D7 9E                      	stab	BB
+  198/E1FE :                            
+  199/E1FE : 96 9D                      	ldaa	AA+1		; SQD = AA - BB
+  200/E200 : 90 9F                      	suba	BB+1
+  201/E202 : 97 9B                      	staa	SQD+1
+  202/E204 : 96 9C                      	ldaa	AA
+  203/E206 : 92 9E                      	sbca	BB
+  204/E208 : 97 9A                      	staa	SQD
+  205/E20A :                            
+  206/E20A : 33                         	pulb
+  207/E20B : DE 98                      	ldx	T
+  208/E20D : 39                         	rts
+  209/E20E :                            
+  210/E20E :                            
+  211/E20E :                            ;;
+  212/E20E :                            ;; utils
+  213/E20E :                            ;;
+  214/E20E :                            
+  215/EA00 :                            	org	$EA00
+  216/EA00 :                            
+  217/EA00 :                            ;
+  218/EA00 :                            ; unsigned 8bit x signed 8bit -> signed 16bit
+  219/EA00 :                            ;
+  220/EA00 :                            ; M(XL) x N(A) -> BA
+  221/EA00 :                            ;
+  222/EA00 :                            MULUS8:
+  223/EA00 : 97 0E                      	staa	WN
+  224/EA02 : DF 0C                      	stx	WT
+  225/EA04 :                            MULUS8a:
+  226/EA04 : 96 0D                      	ldaa	WT+1
+  227/EA06 : 97 0C                      	sta	WT		; MLML -> WT
+  228/EA08 : 86 08                      	ldaa	#8
+  229/EA0A : 97 2F                      	staa	F
+  230/EA0C : 5F                         	clrb
+  231/EA0D : D7 0A                      	stab	W
+  232/EA0F :                            MLT82:
+  233/EA0F : 78 00 0A                   	asl	W		; prod << 1
+  234/EA12 : 59                         	rolb
+  235/EA13 : 79 00 0C                   	rol	WT		; c,M = M << 1
+  236/EA16 : 24 08                      	bcc	MLT8N
+  237/EA18 : 96 0A                      	ldaa	W		; B,prod += N
+  238/EA1A : 9B 0E                      	adda	WN
+  239/EA1C : 97 0A                      	staa	W
+  240/EA1E : C9 00                      	adcb	#0
+  241/EA20 :                            MLT8N:
+  242/EA20 : 7A 00 2F                   	dec	F
+  243/EA23 : 26 EA                      	bne	MLT82
+  244/EA25 : 96 0A                      	ldaa	W
+  245/EA27 :                            ; sign
+  246/EA27 : 7D 00 0E                   	tst	WN
+  247/EA2A : 2A 02                      	bpl	_m8ret
+  248/EA2C : D0 0D                      	subb	WT+1
+  249/EA2E :                            _m8ret:
+  250/EA2E : 39                         	rts
+  251/EA2F :                            
+  252/EA2F :                            ;
+  253/EA2F :                            ; signed 8.8 x signed 8.8 -> signed 8.8 (round down)
+  254/EA2F :                            ;
+  255/EA2F :                            ; M(X) x N(BA) -> BA
+  256/EA2F :                            ;
+  257/EA2F :                            MUL88:
+  258/EA2F : 97 0F                      	staa	WN+1
+  259/EA31 : D7 0E                      	stab	WN
+  260/EA33 : DF 0C                      	stx	WT
+  261/EA35 :                            MUL88a:
+  262/EA35 : 96 0D                      	ldaa	WT+1
+  263/EA37 : 36                         	psha			; ML -> 1,x
+  264/EA38 : D6 0C                      	ldab	WT
+  265/EA3A : 37                         	pshb			; MH -> 0,x
+  266/EA3B : 30                         	tsx
+  267/EA3C : 86 10                      	ldaa	#$10
+  268/EA3E : 97 2F                      	staa	F
+  269/EA40 : 5F                         	clrb
+  270/EA41 : D7 0A                      	stab	W
+  271/EA43 : D7 0B                      	stab	W+1
+  272/EA45 :                            MLT2:
+  273/EA45 : 78 00 0B                   	asl	W+1		; prod << 1
+  274/EA48 : 79 00 0A                   	rol	W
+  275/EA4B : 59                         	rolb
+  276/EA4C : 79 00 0D                   	rol	WT+1		; c,M = M << 1
+  277/EA4F : 79 00 0C                   	rol	WT
+  278/EA52 : 24 0E                      	bcc	MLTN
+  279/EA54 : 96 0B                      	ldaa	W+1		; B,prod += N
+  280/EA56 : 9B 0F                      	adda	WN+1
+  281/EA58 : 97 0B                      	staa	W+1
+  282/EA5A : 96 0A                      	ldaa	W
+  283/EA5C : 99 0E                      	adca	WN
+  284/EA5E : 97 0A                      	staa	W
+  285/EA60 : C9 00                      	adcb	#0
+  286/EA62 :                            MLTN:
+  287/EA62 : 7A 00 2F                   	dec	F
+  288/EA65 : 26 DE                      	bne	MLT2
+  289/EA67 : 96 0A                      	ldaa	W
+  290/EA69 :                            ; M sign
+  291/EA69 : 6D 00                      	tst	0,x
+  292/EA6B : 2A 02                      	bpl	_plM
+  293/EA6D : D0 0F                      	subb	WN+1
+  294/EA6F :                            _plM:
+  295/EA6F : 7D 00 0E                   	tst	WN
+  296/EA72 : 2A 02                      	bpl	_sign
+  297/EA74 : E0 01                      	subb	1,x
+  298/EA76 :                            _sign
+  299/EA76 : 5D                         	tstb
+  300/EA77 : 2A 0A                      	bpl	_mret
+  301/EA79 : 96 0B                      	ldaa	W+1
+  302/EA7B : 8B FF                      	adda	#255
+  303/EA7D : 96 0A                      	ldaa	W
+  304/EA7F : 89 00                      	adca	#0
+  305/EA81 : C9 00                      	adcb	#0
+  306/EA83 :                            _mret:
+  307/EA83 : 31                         	ins
+  308/EA84 : 31                         	ins
+  309/EA85 : 39                         	rts
+  310/EA86 :                            
+ AS V1.42 Beta [Bld 273] - Source File mul88.s - Page 2 - 7/25/2026 17:51:12
 
 
   Symbol Table (* = unused):
   --------------------------
 
+ A :                             94 - |  AA :                            9C - |
 *ARCHITECTURE :                                        "i386-unknown-win32" - |
-*CASESENSITIVE :                  0 - | *CONSTPI :        3.141592653589793 - |
-*DATE :                 "7/16/2026" - |  F :                             2F - |
-*FALSE :                          0 - | *HAS64 :                          0 - |
-*LISTON :                         1 - | *MACEXP :                         7 - |
- MLT2 :                        EA16 C |  MLTN :                        EA33 C |
-*MOMCPU :                      6800 - | *MOMCPUNAME :                "6800" - |
-*MUL88 :                       EA00 C | *NESTMAX :                      100 - |
+ B :                             96 - |  BB :                            9E - |
+ CA :                            90 - |  CALC_FOR_I :                  E1B0 C |
+ CALC_SQDIFF :                 E18A C | *CASESENSITIVE :                  0 - |
+ CB :                            92 - |  CHAR :                        E157 C |
+ CHR :                           A1 - |  CONOUT :                      F839 - |
+*CONSTPI :        3.141592653589793 - |  CR :                             D - |
+*DATE :                 "7/25/2026" - |  DONE :                        E189 C |
+ F :                             2F - | *FALSE :                          0 - |
+ FOR_I :                       E13E C |  FOR_X :                       E114 C |
+ FOR_Y :                       E102 C |  FP88_FOUR :                      4 - |
+ FP88_X_STEP :                    C - |  FP88_Y_STEP :                   15 - |
+*HAS64 :                          0 - |  I :                             A0 - |
+ LF :                             A - | *LISTON :                         1 - |
+*MACEXP :                         7 - |  MLT2 :                        EA45 C |
+ MLT82 :                       EA0F C |  MLT8N :                       EA20 C |
+ MLTN :                        EA62 C | *MOMCPU :                      6800 - |
+*MOMCPUNAME :                "6800" - | *MUL88 :                       EA2F C |
+ MUL88A :                      EA35 C | *MULUS8 :                      EA00 C |
+ MULUS8A :                     EA04 C | *NESTMAX :                      100 - |
+ NEXT_I :                      E167 C |  NEXT_X :                      E16C C |
+*NEXT_Y :                      E177 C |  NUM :                         E161 C |
 *PADDING :                        0 - | *RELAXED :                        0 - |
-*TIME :                     "9:7:0" - | *TRUE :                           1 - |
+ SQD :                           9A - |  T :                             98 - |
+*TIME :                  "17:51:12" - | *TRUE :                           1 - |
 *VERSION :                     142F - |  W :                              A - |
- _MRET :                       EA54 C |  _PLX :                        EA40 C |
- _SIGN :                       EA47 C |
+ WN :                             E - |  WT :                             C - |
+ X_MAX :                         28 - |  X_MIN :                   FFFFFFD9 - |
+ Y_MAX :                          D - |  Y_MIN :                   FFFFFFF4 - |
+ _M8RET :                      EA2E C |  _MRET :                       EA83 C |
+ _PLM :                        EA6F C |  _SIGN :                       EA76 C |
 
-     24 symbols
-     17 unused symbols
+     63 symbols
+     19 unused symbols
 
- AS V1.42 Beta [Bld 273] - Source File mul88.s - Page 3 - 7/16/2026 9:7:0
+ AS V1.42 Beta [Bld 273] - Source File mul88.s - Page 3 - 7/25/2026 17:51:12
 
 
   Code Pages:
@@ -97,7 +365,7 @@ STANDARD (0 changed characters)
 
 0.01 seconds assembly time
 
-     61 lines source file
+    310 lines source file
       2 passes
       0 errors
       0 warnings
