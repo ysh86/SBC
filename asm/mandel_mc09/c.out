@@ -1,0 +1,136 @@
+main
+	PSHS	U
+	LEAU	,S
+	LEAS	-20,S
+	LDD	#-12
+	STD	-4,U
+_3
+	LDD	-4,U
+	SUBD	#12
+	LBGT	_2
+	LDD	-4,U
+	ANDA	#0
+	ANDB	#255
+	ORA	#21
+	ORB	#0
+	PSHS	D
+	LBSR	mulus8
+	LEAS	2,S
+	STD	-10,U
+	LDD	#-39
+	STD	-2,U
+_6
+	LDD	-2,U
+	SUBD	#39
+	LBGT	_5
+	LDD	-2,U
+	ANDA	#0
+	ANDB	#255
+	ORA	#12
+	ORB	#0
+	PSHS	D
+	LBSR	mulus8
+	LEAS	2,S
+	STD	-8,U
+	LDD	-8,U
+	STD	-12,U
+	LDD	-10,U
+	STD	-14,U
+	LDD	-14,U
+	ADDD	-12,U
+	PSHS	D
+	LDD	-12,U
+	SUBD	-14,U
+	PSHS	D
+	LBSR	mul8p8
+	LEAS	4,S
+	STD	-16,U
+	CLRA
+	CLRB
+	STD	-6,U
+_8
+	LDD	-6,U
+	SUBD	#16
+	LBGE	_7
+	LDD	-14,U
+	PSHS	D
+	LDD	-12,U
+	PSHS	D
+	LBSR	mul8p8
+	LEAS	4,S
+	ASLB
+	ROLA
+	ADDD	-10,U
+	STD	-14,U
+	LDD	-8,U
+	ADDD	-16,U
+	STD	-12,U
+	LDD	-12,U
+	PSHS	D
+	LDD	-12,U
+	PSHS	D
+	LBSR	mul8p8
+	LEAS	4,S
+	STD	-18,U
+	LDD	-14,U
+	PSHS	D
+	LDD	-14,U
+	PSHS	D
+	LBSR	mul8p8
+	LEAS	4,S
+	STD	-20,U
+	LDD	-18,U
+	SUBD	-20,U
+	STD	-16,U
+	LDD	-20,U
+	ADDD	-18,U
+	SUBD	#1024
+	LBLE	_10
+	LDD	-6,U
+	SUBD	#9
+	LBLE	_11
+	LDD	-6,U
+	ADDD	#7
+	STD	-6,U
+_11
+	LDD	-6,U
+	ADDD	#48
+	PSHS	D
+	LBSR	putchar
+	LEAS	2,S
+	LBRA	_12
+_10
+_9
+	LDD	-6,U
+	ADDD	#1
+	STD	-6,U
+	LBRA	_8
+_7
+	LDD	#32
+	PSHS	D
+	LBSR	putchar
+	LEAS	2,S
+_12
+_13
+	LDD	-2,U
+	ADDD	#1
+	STD	-2,U
+	LBRA	_6
+_5
+	LDD	#10
+	PSHS	D
+	LBSR	putchar
+	LEAS	2,S
+_4
+	LDD	-4,U
+	ADDD	#1
+	STD	-4,U
+	LBRA	_3
+_2
+	LDD	-4,U
+	LEAS	,U
+	PULS	U,PC
+_1	RTS
+_INITIALIZE	EQU	_1
+_GLOBALS	EQU	0
+	END

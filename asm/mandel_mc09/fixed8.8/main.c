@@ -20,7 +20,7 @@ int16_t mulus8(/* int16_t Au8_Bs8 */);
 int main()
 {
     int16_t x, y, i;
-    int16_t ca, cb, a, b, t;
+    int16_t ca, cb, a, b;
     int16_t square_diff, aa, bb;
 
     for (y = -12; y <= 12; ++y) {
@@ -30,10 +30,9 @@ int main()
             a = ca;
             b = cb;
             square_diff = mul8p8((a - b), (a + b));
-            for (i = 0; i <= 15; ++i) {
-                t = square_diff + ca;
+            for (i = 0; i < 16; ++i) {
                 b = 2 * mul8p8(a,b) + cb;
-                a = t;
+                a = square_diff + ca;
                 aa = mul8p8(a,a);
                 bb = mul8p8(b,b);
                 square_diff = aa - bb;
