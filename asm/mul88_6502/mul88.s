@@ -156,14 +156,6 @@ CALC_SQDIFF:
 
 
 CALC_FOR_I:
-	clc			; T = SQD + CA
-	lda	SQD
-	adc	CA
-	sta	T
-	lda	SQD+1
-	adc	CA+1
-	sta	T+1
-
 	lda	A+0		; B = ((A * B) << 1) + CB
 	sta	W+5
 	lda	A+1
@@ -183,11 +175,14 @@ CALC_FOR_I:
 	adc	CB+1
 	sta	B+1
 
-	lda	T		; A = T, AA = A * A
+	clc			; A = SQD + CA, AA = A * A
+	lda	SQD
+	adc	CA
 	sta	A+0
 	sta	W+5
 	sta	W+7
-	lda	T+1
+	lda	SQD+1
+	adc	CA+1
 	sta	A+1
 	sta	W+6
 	sta	W+8

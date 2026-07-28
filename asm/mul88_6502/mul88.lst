@@ -1,4 +1,4 @@
- AS V1.42 Beta [Bld 273] - Source File mul88.s - Page 1 - 7/24/2026 9:23:33
+ AS V1.42 Beta [Bld 273] - Source File mul88.s - Page 1 - 7/28/2026 8:55:9
 
 
     1/   0 :                            	page	0
@@ -159,187 +159,182 @@
   156/60B0 :                            
   157/60B0 :                            
   158/60B0 :                            CALC_FOR_I:
-  159/60B0 : 18                         	clc			; T = SQD + CA
-  160/60B1 : A5 9A                      	lda	SQD
-  161/60B3 : 65 90                      	adc	CA
-  162/60B5 : 85 98                      	sta	T
-  163/60B7 : A5 9B                      	lda	SQD+1
-  164/60B9 : 65 91                      	adc	CA+1
-  165/60BB : 85 99                      	sta	T+1
-  166/60BD :                            
-  167/60BD : A5 94                      	lda	A+0		; B = ((A * B) << 1) + CB
-  168/60BF : 85 8C                      	sta	W+5
-  169/60C1 : A5 95                      	lda	A+1
-  170/60C3 : 85 8D                      	sta	W+6
-  171/60C5 : A5 96                      	lda	B
-  172/60C7 : 85 8E                      	sta	W+7
-  173/60C9 : A5 97                      	lda	B+1
-  174/60CB : 85 8F                      	sta	W+8
-  175/60CD : 20 34 64                   	jsr	MUL88
-  176/60D0 : 06 88                      	asl	W+1
-  177/60D2 : 26 89                      	rol	W+2
-  178/60D4 : 18                         	clc
-  179/60D5 : A5 88                      	lda	W+1
-  180/60D7 : 65 92                      	adc	CB
-  181/60D9 : 85 96                      	sta	B
-  182/60DB : A5 89                      	lda	W+2
-  183/60DD : 65 93                      	adc	CB+1
-  184/60DF : 85 97                      	sta	B+1
-  185/60E1 :                            
-  186/60E1 : A5 98                      	lda	T		; A = T, AA = A * A
-  187/60E3 : 85 94                      	sta	A+0
-  188/60E5 : 85 8C                      	sta	W+5
-  189/60E7 : 85 8E                      	sta	W+7
-  190/60E9 : A5 99                      	lda	T+1
-  191/60EB : 85 95                      	sta	A+1
-  192/60ED : 85 8D                      	sta	W+6
-  193/60EF : 85 8F                      	sta	W+8
-  194/60F1 : 20 34 64                   	jsr	MUL88
-  195/60F4 : A5 88                      	lda	W+1
-  196/60F6 : 85 9C                      	sta	AA
-  197/60F8 : A5 89                      	lda	W+2
-  198/60FA : 85 9D                      	sta	AA+1
-  199/60FC :                            
-  200/60FC : A5 96                      	lda	B		; BB = B * B
-  201/60FE : 85 8C                      	sta	W+5
-  202/6100 : 85 8E                      	sta	W+7
-  203/6102 : A5 97                      	lda	B+1
-  204/6104 : 85 8D                      	sta	W+6
-  205/6106 : 85 8F                      	sta	W+8
-  206/6108 : 20 34 64                   	jsr	MUL88
-  207/610B : A5 88                      	lda	W+1
-  208/610D : 85 9E                      	sta	BB
-  209/610F : A5 89                      	lda	W+2
-  210/6111 : 85 9F                      	sta	BB+1
-  211/6113 :                            
-  212/6113 : 38                         	sec			; SQD = AA - BB
-  213/6114 : A5 9C                      	lda	AA
-  214/6116 : E5 9E                      	sbc	BB
-  215/6118 : 85 9A                      	sta	SQD
-  216/611A : A5 9D                      	lda	AA+1
-  217/611C : E5 9F                      	sbc	BB+1
-  218/611E : 85 9B                      	sta	SQD+1
-  219/6120 :                            
-  220/6120 : 60                         	rts
-  221/6121 :                            
-  222/6121 :                            
-  223/6121 :                            ;;
-  224/6121 :                            ;; utils
-  225/6121 :                            ;;
-  226/6400 :                            	org	$6400
-  227/6400 :                            
-  228/6400 :                            ;
-  229/6400 :                            ; unsigned 8bit x signed 8bit -> signed 16bit
-  230/6400 :                            ;
-  231/6400 :                            ; a reg x W+7 -> W+1,W+2
-  232/6400 :                            ;
-  233/6400 :                            MULUS8:
-  234/6400 : 85 8C                      	sta	W+5
-  235/6402 : 85 8A                      	sta	W+3
-  236/6404 : 8A                         	txa
-  237/6405 : 48                         	pha
-  238/6406 : A2 08                      	ldx	#8
-  239/6408 : A9 00                      	lda	#0
-  240/640A : 85 88                      	sta	W+1
-  241/640C : 85 89                      	sta	W+2
-  242/640E :                            MLT82:
-  243/640E : 06 88                      	asl	W+1		; prod << 1
-  244/6410 : 26 89                      	rol	W+2
-  245/6412 : 26 8A                      	rol	W+3		; c,M = M << 1
-  246/6414 : 90 0D                      	bcc	MLT8N
-  247/6416 : 18                         	clc
-  248/6417 : A5 88                      	lda	W+1		; prod += N
-  249/6419 : 65 8E                      	adc	W+7
-  250/641B : 85 88                      	sta	W+1
-  251/641D : A5 89                      	lda	W+2
-  252/641F : 69 00                      	adc	#0
-  253/6421 : 85 89                      	sta	W+2
-  254/6423 :                            MLT8N:
-  255/6423 : CA                         	dex
-  256/6424 : D0 E8                      	bne	MLT82
-  257/6426 :                            ; sign
-  258/6426 : A5 8E                      	lda	W+7
-  259/6428 : 10 07                      	bpl	_m8ret
-  260/642A : 38                         	sec
-  261/642B : A5 89                      	lda	W+2
-  262/642D : E5 8C                      	sbc	W+5
-  263/642F : 85 89                      	sta	W+2
-  264/6431 :                            _m8ret:
-  265/6431 : 68                         	pla
-  266/6432 : AA                         	tax
-  267/6433 : 60                         	rts
-  268/6434 :                            
-  269/6434 :                            ;
-  270/6434 :                            ; signed 8.8 x signed 8.8 -> signed 8.8 (round down)
-  271/6434 :                            ;
-  272/6434 :                            ; M(W+5,6) x N(W+7,8) -> W+1,W+2
-  273/6434 :                            ;
-  274/6434 :                            MUL88:
-  275/6434 : 8A                         	txa
-  276/6435 : 48                         	pha
-  277/6436 :                            
-  278/6436 : A5 8C                      	lda	W+5
-  279/6438 : 85 8A                      	sta	W+3
-  280/643A : A5 8D                      	lda	W+6
-  281/643C : 85 8B                      	sta	W+4
-  282/643E : A2 10                      	ldx	#$10
-  283/6440 : A9 00                      	lda	#0
-  284/6442 : 85 87                      	sta	W
-  285/6444 : 85 88                      	sta	W+1
-  286/6446 : 85 89                      	sta	W+2
-  287/6448 :                            MLT2:
-  288/6448 : 06 87                      	asl	W		; prod << 1
-  289/644A : 26 88                      	rol	W+1
-  290/644C : 26 89                      	rol	W+2
-  291/644E : 26 8A                      	rol	W+3		; c,M = M << 1
-  292/6450 : 26 8B                      	rol	W+4
-  293/6452 : 90 13                      	bcc	MLTN
-  294/6454 : 18                         	clc
-  295/6455 : A5 87                      	lda	W		; prod += N
-  296/6457 : 65 8E                      	adc	W+7
-  297/6459 : 85 87                      	sta	W
-  298/645B : A5 88                      	lda	W+1
-  299/645D : 65 8F                      	adc	W+8
-  300/645F : 85 88                      	sta	W+1
-  301/6461 : A5 89                      	lda	W+2
-  302/6463 : 69 00                      	adc	#0
-  303/6465 : 85 89                      	sta	W+2
-  304/6467 :                            MLTN:
-  305/6467 : CA                         	dex
-  306/6468 : D0 DE                      	bne	MLT2
-  307/646A :                            ; M sign
-  308/646A : A5 8D                      	lda	W+6
-  309/646C : 10 07                      	bpl	_plM
-  310/646E : A5 89                      	lda	W+2
-  311/6470 : 38                         	sec
-  312/6471 : E5 8E                      	sbc	W+7
-  313/6473 : 85 89                      	sta	W+2
-  314/6475 :                            _plM:
-  315/6475 : A5 8F                      	lda	W+8
-  316/6477 : 10 07                      	bpl	_rdown
-  317/6479 : A5 89                      	lda	W+2
-  318/647B : 38                         	sec
-  319/647C : E5 8C                      	sbc	W+5
-  320/647E : 85 89                      	sta	W+2
-  321/6480 :                            _rdown
-  322/6480 : A5 89                      	lda	W+2
-  323/6482 : 10 13                      	bpl	_mret
-  324/6484 : 18                         	clc
-  325/6485 : A5 87                      	lda	W
-  326/6487 : 69 FF                      	adc	#255
-  327/6489 : 85 87                      	sta	W
-  328/648B : A5 88                      	lda	W+1
-  329/648D : 69 00                      	adc	#0
-  330/648F : 85 88                      	sta	W+1
-  331/6491 : A5 89                      	lda	W+2
-  332/6493 : 69 00                      	adc	#0
-  333/6495 : 85 89                      	sta	W+2
-  334/6497 :                            _mret:
-  335/6497 : 68                         	pla
-  336/6498 : AA                         	tax
-  337/6499 : 60                         	rts
-  338/649A :                            
- AS V1.42 Beta [Bld 273] - Source File mul88.s - Page 2 - 7/24/2026 9:23:33
+  159/60B0 : A5 94                      	lda	A+0		; B = ((A * B) << 1) + CB
+  160/60B2 : 85 8C                      	sta	W+5
+  161/60B4 : A5 95                      	lda	A+1
+  162/60B6 : 85 8D                      	sta	W+6
+  163/60B8 : A5 96                      	lda	B
+  164/60BA : 85 8E                      	sta	W+7
+  165/60BC : A5 97                      	lda	B+1
+  166/60BE : 85 8F                      	sta	W+8
+  167/60C0 : 20 34 64                   	jsr	MUL88
+  168/60C3 : 06 88                      	asl	W+1
+  169/60C5 : 26 89                      	rol	W+2
+  170/60C7 : 18                         	clc
+  171/60C8 : A5 88                      	lda	W+1
+  172/60CA : 65 92                      	adc	CB
+  173/60CC : 85 96                      	sta	B
+  174/60CE : A5 89                      	lda	W+2
+  175/60D0 : 65 93                      	adc	CB+1
+  176/60D2 : 85 97                      	sta	B+1
+  177/60D4 :                            
+  178/60D4 : 18                         	clc			; A = SQD + CA, AA = A * A
+  179/60D5 : A5 9A                      	lda	SQD
+  180/60D7 : 65 90                      	adc	CA
+  181/60D9 : 85 94                      	sta	A+0
+  182/60DB : 85 8C                      	sta	W+5
+  183/60DD : 85 8E                      	sta	W+7
+  184/60DF : A5 9B                      	lda	SQD+1
+  185/60E1 : 65 91                      	adc	CA+1
+  186/60E3 : 85 95                      	sta	A+1
+  187/60E5 : 85 8D                      	sta	W+6
+  188/60E7 : 85 8F                      	sta	W+8
+  189/60E9 : 20 34 64                   	jsr	MUL88
+  190/60EC : A5 88                      	lda	W+1
+  191/60EE : 85 9C                      	sta	AA
+  192/60F0 : A5 89                      	lda	W+2
+  193/60F2 : 85 9D                      	sta	AA+1
+  194/60F4 :                            
+  195/60F4 : A5 96                      	lda	B		; BB = B * B
+  196/60F6 : 85 8C                      	sta	W+5
+  197/60F8 : 85 8E                      	sta	W+7
+  198/60FA : A5 97                      	lda	B+1
+  199/60FC : 85 8D                      	sta	W+6
+  200/60FE : 85 8F                      	sta	W+8
+  201/6100 : 20 34 64                   	jsr	MUL88
+  202/6103 : A5 88                      	lda	W+1
+  203/6105 : 85 9E                      	sta	BB
+  204/6107 : A5 89                      	lda	W+2
+  205/6109 : 85 9F                      	sta	BB+1
+  206/610B :                            
+  207/610B : 38                         	sec			; SQD = AA - BB
+  208/610C : A5 9C                      	lda	AA
+  209/610E : E5 9E                      	sbc	BB
+  210/6110 : 85 9A                      	sta	SQD
+  211/6112 : A5 9D                      	lda	AA+1
+  212/6114 : E5 9F                      	sbc	BB+1
+  213/6116 : 85 9B                      	sta	SQD+1
+  214/6118 :                            
+  215/6118 : 60                         	rts
+  216/6119 :                            
+  217/6119 :                            
+  218/6119 :                            ;;
+  219/6119 :                            ;; utils
+  220/6119 :                            ;;
+  221/6400 :                            	org	$6400
+  222/6400 :                            
+  223/6400 :                            ;
+  224/6400 :                            ; unsigned 8bit x signed 8bit -> signed 16bit
+  225/6400 :                            ;
+  226/6400 :                            ; a reg x W+7 -> W+1,W+2
+  227/6400 :                            ;
+  228/6400 :                            MULUS8:
+  229/6400 : 85 8C                      	sta	W+5
+  230/6402 : 85 8A                      	sta	W+3
+  231/6404 : 8A                         	txa
+  232/6405 : 48                         	pha
+  233/6406 : A2 08                      	ldx	#8
+  234/6408 : A9 00                      	lda	#0
+  235/640A : 85 88                      	sta	W+1
+  236/640C : 85 89                      	sta	W+2
+  237/640E :                            MLT82:
+  238/640E : 06 88                      	asl	W+1		; prod << 1
+  239/6410 : 26 89                      	rol	W+2
+  240/6412 : 26 8A                      	rol	W+3		; c,M = M << 1
+  241/6414 : 90 0D                      	bcc	MLT8N
+  242/6416 : 18                         	clc
+  243/6417 : A5 88                      	lda	W+1		; prod += N
+  244/6419 : 65 8E                      	adc	W+7
+  245/641B : 85 88                      	sta	W+1
+  246/641D : A5 89                      	lda	W+2
+  247/641F : 69 00                      	adc	#0
+  248/6421 : 85 89                      	sta	W+2
+  249/6423 :                            MLT8N:
+  250/6423 : CA                         	dex
+  251/6424 : D0 E8                      	bne	MLT82
+  252/6426 :                            ; sign
+  253/6426 : A5 8E                      	lda	W+7
+  254/6428 : 10 07                      	bpl	_m8ret
+  255/642A : 38                         	sec
+  256/642B : A5 89                      	lda	W+2
+  257/642D : E5 8C                      	sbc	W+5
+  258/642F : 85 89                      	sta	W+2
+  259/6431 :                            _m8ret:
+  260/6431 : 68                         	pla
+  261/6432 : AA                         	tax
+  262/6433 : 60                         	rts
+  263/6434 :                            
+  264/6434 :                            ;
+  265/6434 :                            ; signed 8.8 x signed 8.8 -> signed 8.8 (round down)
+  266/6434 :                            ;
+  267/6434 :                            ; M(W+5,6) x N(W+7,8) -> W+1,W+2
+  268/6434 :                            ;
+  269/6434 :                            MUL88:
+  270/6434 : 8A                         	txa
+  271/6435 : 48                         	pha
+  272/6436 :                            
+  273/6436 : A5 8C                      	lda	W+5
+  274/6438 : 85 8A                      	sta	W+3
+  275/643A : A5 8D                      	lda	W+6
+  276/643C : 85 8B                      	sta	W+4
+  277/643E : A2 10                      	ldx	#$10
+  278/6440 : A9 00                      	lda	#0
+  279/6442 : 85 87                      	sta	W
+  280/6444 : 85 88                      	sta	W+1
+  281/6446 : 85 89                      	sta	W+2
+  282/6448 :                            MLT2:
+  283/6448 : 06 87                      	asl	W		; prod << 1
+  284/644A : 26 88                      	rol	W+1
+  285/644C : 26 89                      	rol	W+2
+  286/644E : 26 8A                      	rol	W+3		; c,M = M << 1
+  287/6450 : 26 8B                      	rol	W+4
+  288/6452 : 90 13                      	bcc	MLTN
+  289/6454 : 18                         	clc
+  290/6455 : A5 87                      	lda	W		; prod += N
+  291/6457 : 65 8E                      	adc	W+7
+  292/6459 : 85 87                      	sta	W
+  293/645B : A5 88                      	lda	W+1
+  294/645D : 65 8F                      	adc	W+8
+  295/645F : 85 88                      	sta	W+1
+  296/6461 : A5 89                      	lda	W+2
+  297/6463 : 69 00                      	adc	#0
+  298/6465 : 85 89                      	sta	W+2
+  299/6467 :                            MLTN:
+  300/6467 : CA                         	dex
+  301/6468 : D0 DE                      	bne	MLT2
+  302/646A :                            ; M sign
+  303/646A : A5 8D                      	lda	W+6
+  304/646C : 10 07                      	bpl	_plM
+  305/646E : A5 89                      	lda	W+2
+  306/6470 : 38                         	sec
+  307/6471 : E5 8E                      	sbc	W+7
+  308/6473 : 85 89                      	sta	W+2
+  309/6475 :                            _plM:
+  310/6475 : A5 8F                      	lda	W+8
+  311/6477 : 10 07                      	bpl	_rdown
+  312/6479 : A5 89                      	lda	W+2
+  313/647B : 38                         	sec
+  314/647C : E5 8C                      	sbc	W+5
+  315/647E : 85 89                      	sta	W+2
+  316/6480 :                            _rdown
+  317/6480 : A5 89                      	lda	W+2
+  318/6482 : 10 13                      	bpl	_mret
+  319/6484 : 18                         	clc
+  320/6485 : A5 87                      	lda	W
+  321/6487 : 69 FF                      	adc	#255
+  322/6489 : 85 87                      	sta	W
+  323/648B : A5 88                      	lda	W+1
+  324/648D : 69 00                      	adc	#0
+  325/648F : 85 88                      	sta	W+1
+  326/6491 : A5 89                      	lda	W+2
+  327/6493 : 69 00                      	adc	#0
+  328/6495 : 85 89                      	sta	W+2
+  329/6497 :                            _mret:
+  330/6497 : 68                         	pla
+  331/6498 : AA                         	tax
+  332/6499 : 60                         	rts
+  333/649A :                            
+ AS V1.42 Beta [Bld 273] - Source File mul88.s - Page 2 - 7/28/2026 8:55:9
 
 
   Symbol Table (* = unused):
@@ -353,7 +348,7 @@
  CB :                            92 - |  CHAR :                        6055 C |
  CHR :                           A1 - |  CONOUT :                      6F90 - |
 *CONSTPI :        3.141592653589793 - |  CR :                             D - |
-*DATE :                 "7/24/2026" - |  DONE :                        6089 C |
+*DATE :                 "7/28/2026" - |  DONE :                        6089 C |
 *FALSE :                          0 - |  FOR_I :                       603B C |
  FOR_X :                       6014 C |  FOR_Y :                       6002 C |
  FP88_FOUR :                      4 - |  FP88_X_STEP :                    C - |
@@ -368,7 +363,7 @@
  NEXT_X :                      606B C | *NEXT_Y :                      6076 C |
  NUM :                         6061 C | *RELAXED :                        0 - |
  SQD :                           9A - |  T :                             98 - |
-*TIME :                   "9:23:33" - | *TRUE :                           1 - |
+*TIME :                    "8:55:9" - | *TRUE :                           1 - |
 *VERSION :                     142F - |  W :                             87 - |
  X_MAX :                         28 - |  X_MIN :                   FFFFFFD9 - |
  Y_MAX :                          D - |  Y_MIN :                   FFFFFFF4 - |
@@ -378,7 +373,7 @@
      57 symbols
      16 unused symbols
 
- AS V1.42 Beta [Bld 273] - Source File mul88.s - Page 3 - 7/24/2026 9:23:33
+ AS V1.42 Beta [Bld 273] - Source File mul88.s - Page 3 - 7/28/2026 8:55:9
 
 
   Code Pages:
@@ -388,9 +383,9 @@ STANDARD (0 changed characters)
 
 1 code page
 
-0.00 seconds assembly time
+0.02 seconds assembly time
 
-    338 lines source file
+    333 lines source file
       2 passes
       0 errors
       0 warnings
