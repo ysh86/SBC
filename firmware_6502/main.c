@@ -169,10 +169,10 @@
 
 #define FC_DUMPER 1
 
-// CPU clock: 4,6,8,10MHz
+// CPU clock: 2,3,4,6,8,10MHz
 #if FC_DUMPER
-#define CPU_CLK_MHz 4UL
-#define CPU_CLK_STR "MEZ6502RAM 4.0MHz"
+#define CPU_CLK_MHz 2UL
+#define CPU_CLK_STR "MEZ6502RAM 2.0MHz"
 #else
 #define CPU_CLK_MHz 8UL
 #define CPU_CLK_STR "MEZ6502RAM 8.0MHz"
@@ -530,17 +530,17 @@ void main(void) {
     CLCSELECT = 4;  // Select CLC5
     CLCnCON = 0x00; // Disable CLC
 
-    CLCnSEL0 = 53;  // CLC3: /IORQ
-    CLCnSEL1 = 127; // N/C
+    CLCnSEL0 = 42;  // NCO1
+    CLCnSEL1 = 53;  // CLC3: /IORQ
     CLCnSEL2 = 127; // N/C
     CLCnSEL3 = 127; // N/C
 
-    CLCnGLS0 = 0x01; // D-FF CLK <- !/IORQ (neg edge)
-    CLCnGLS1 = 0x00; // D-FF D   <- not gated (inv'0')
+    CLCnGLS0 = 0x02; // D-FF CLK <- NCO1 (pos edge)
+    CLCnGLS1 = 0x04; // D-FF D   <- !/IORQ
     CLCnGLS2 = 0x00; // D-FF R   <- not gated ('0') <- G3POL
     CLCnGLS3 = 0x00; // D-FF S   <- not gated ('0')
 
-    CLCnPOL = 0x82; // inverted the output of the logic cell. inverted D-FF D.
+    CLCnPOL = 0x80; // inverted the output of the logic cell.
     CLCnCON = 0x84; // Select D-FF
 
     //========== CLC output pin assign ===========
@@ -605,6 +605,12 @@ void main(void) {
             while(RA3);
             // Release RDY (D-FF reset)
             G3POL = 1;
+#if 1
+            // Wait for next CLK falling edge
+            // Only needed for slow CPU (CLK < 3MHz)
+            while(!RA3);
+            while(RA3);
+#endif
             TRISC = 0xff; // Set Data Bus as input
             G3POL = 0;
         }
